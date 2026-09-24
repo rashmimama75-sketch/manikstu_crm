@@ -3,6 +3,8 @@
 // real API later. Rows are generated from a fixed seed, so they are the same on
 // every load.
 
+import { CATALOG_PRODUCTS } from './catalogProducts';
+
 export const TODAY = '2026-09-24';
 
 export interface Telecaller { id: number; name: string }
@@ -345,8 +347,9 @@ const websiteOrders: SalesOrder[] = Array.from({ length: 32 }, (_, i) => {
   const hour = int(8, 21);
   const minute = int(0, 59);
   const method: PaymentMethod = pick(['UPI', 'UPI', 'UPI', 'COD', 'COD', 'COD', 'Card', 'Net banking']);
-  const products = [...physicalProducts].sort(() => rand() - 0.5).slice(0, int(1, 3));
-  const items = products.map(p => ({ product_name: p.name, quantity: int(1, 4), price: p.price }));
+  // Website orders come from the website catalogue (only products with a price can be bought)
+  const products = CATALOG_PRODUCTS.filter(p => p.price !== null).sort(() => rand() - 0.5).slice(0, int(1, 3));
+  const items = products.map(p => ({ product_name: p.name, quantity: int(1, 4), price: p.price! }));
   return {
     id: 1000 + i,
     order_number: `MNK-${10480 + i}`,

@@ -30,7 +30,7 @@ export default function Sidebar({ activePage, onSelectPage, counts }: SidebarPro
     {
       label: 'People & Staff',
       items: [
-        { key: 'staffonboarding', label: 'Staff onboarding', count: counts.staff }
+        { key: 'staffonboarding', label: 'User onboarding', count: counts.staff }
       ]
     },
     {

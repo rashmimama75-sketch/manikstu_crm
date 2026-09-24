@@ -8,8 +8,9 @@ import {
   PaymentStatus,
   OrderSource,
 } from '../../data/managerDashboard';
-import { MONTH, ORDER_CHIP, daysBefore, nowStamp, rupees, rupeesShort, shortDateTime } from '../../lib/format';
-import { downloadCsv } from '../../lib/csv';
+import { MONTH, ORDER_CHIP, daysBefore, nowStamp, rupees, rupeesShort, shortDate, shortDateTime } from '../../lib/format';
+import { ExportFormat, exportTable } from '../../lib/export';
+import ExportMenu from '../ExportMenu';
 
 interface OrdersViewProps {
   orders: SalesOrder[];
@@ -46,16 +47,34 @@ const itemsSummary = (o: SalesOrder) => ({
   qty: o.items.reduce((a, it) => a + it.quantity, 0),
 });
 
-function exportOrders(rows: SalesOrder[]) {
-  downloadCsv(
-    `orders-${TODAY}.csv`,
-    ['Order', 'Date', 'Source', 'Telecaller', 'Customer', 'Phone', 'City', 'Items', 'Total', 'Payment', 'Method', 'Status'],
-    rows.map(o => [
-      o.order_number, o.created_at.replace('T', ' '), o.source, o.source === 'telecaller' ? callerName(o.caller_id) : '',
-      o.customer_name, o.phone, o.city, o.items.map(it => `${it.product_name} x${it.quantity}`).join('; '),
+function exportOrders(rows: SalesOrder[], format: ExportFormat, scope: string) {
+  const total = rows.reduce((a, o) => a + o.total, 0);
+  return exportTable(format, {
+    filename: `orders-${TODAY}`,
+    title: 'Orders',
+    // "Rs." rather than ₹: the PDF's built-in fonts can't draw the rupee sign
+    subtitle: `${rows.length} ${rows.length === 1 ? 'order' : 'orders'} · Rs. ${total.toLocaleString('en-IN')} · ${scope} · exported ${shortDate(TODAY)}`,
+    columns: [
+      { header: 'Order', width: 12 },
+      { header: 'Date', width: 14 },
+      { header: 'Source', width: 11 },
+      { header: 'Telecaller', width: 16 },
+      { header: 'Customer', width: 20 },
+      { header: 'Phone', width: 13 },
+      { header: 'City', width: 13 },
+      { header: 'Items', width: 40 },
+      { header: 'Total', width: 11, money: true },
+      { header: 'Payment', width: 10 },
+      { header: 'Method', width: 11 },
+      { header: 'Status', width: 11 },
+    ],
+    rows: rows.map(o => [
+      o.order_number, shortDateTime(o.created_at), o.source === 'website' ? 'Website' : 'Telecaller',
+      o.source === 'telecaller' ? callerName(o.caller_id) : '', o.customer_name, o.phone, o.city,
+      o.items.map(it => `${it.product_name} x ${it.quantity}`).join(', '),
       o.total, o.payment_status, o.payment_method, o.status,
     ]),
-  );
+  });
 }
 
 function printInvoice(o: SalesOrder) {
@@ -166,6 +185,19 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
 
   const openOrder = (o: SalesOrder) => { setOpenId(o.id); setNoteDraft(o.notes ?? ''); };
 
+  const runExport = async (rows: SalesOrder[], format: ExportFormat, scope: string) => {
+    if (rows.length === 0) {
+      onToast('No orders to export');
+      return;
+    }
+    try {
+      await exportOrders(rows, format, scope);
+      onToast(`Exported ${rows.length} ${rows.length === 1 ? 'order' : 'orders'} to ${format === 'excel' ? 'Excel' : 'PDF'}`);
+    } catch {
+      onToast('Export failed. Please try again.');
+    }
+  };
+
   // ---- Selection ---------------------------------------------------------------------------
   const allOnPageSelected = pageRows.length > 0 && pageRows.every(o => selected.has(o.id));
   const toggle = (id: number) => setSelected(prev => {
@@ -242,7 +274,7 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
           ))}
         </div>
         <div className="toolbar-actions">
-          <button className="btn-secondary" onClick={() => exportOrders(filtered)}>Export CSV</button>
+          <ExportMenu onExport={format => runExport(filtered, format, 'current filters')} />
           <button className="btn-primary" onClick={onOpenNewOrderModal}>+ New Order</button>
         </div>
       </div>
@@ -283,7 +315,7 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
           <button className="btn-secondary btn-small" onClick={() => setStatus(selectedIds, 'shipped')}>Mark shipped</button>
           <button className="btn-secondary btn-small" onClick={() => setStatus(selectedIds, 'delivered')}>Mark delivered</button>
           <button className="btn-secondary btn-small" onClick={() => setPayment(selectedIds, 'paid')}>Mark paid</button>
-          <button className="btn-secondary btn-small" onClick={() => exportOrders(orders.filter(o => selected.has(o.id)))}>Export CSV</button>
+          <ExportMenu small label="Export selected" onExport={format => runExport(orders.filter(o => selected.has(o.id)), format, 'selected')} />
           <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
         </div>
       )}

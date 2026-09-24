@@ -26,14 +26,12 @@ import ReportsView from './views/ReportsView';
 // Initial Data
 import {
   INITIAL_CUSTOMERS,
-  INITIAL_PRODUCTS,
   INITIAL_STAFF,
   INITIAL_FRANCHISES,
   INITIAL_FPOS,
   INITIAL_INVENTORY,
   INITIAL_TRANSACTIONS,
   Customer,
-  Product,
   StaffCard,
   Franchise,
   FPO,
@@ -54,6 +52,7 @@ import {
   TrackerLead,
   WebEnquiry,
 } from '../data/managerDashboard';
+import { CATALOG_PRODUCTS, CatalogProduct } from '../data/catalogProducts';
 import { nowStamp } from '../lib/format';
 import type { SessionUser } from '../lib/session';
 
@@ -79,7 +78,8 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
   const [trackerLeads, setTrackerLeads] = useState<TrackerLead[]>(TRACKER_LEADS);
   const [webEnquiries, setWebEnquiries] = useState<WebEnquiry[]>(WEB_ENQUIRIES);
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  // Website product catalogue, editable on the Products page
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>(CATALOG_PRODUCTS);
   const [staff, setStaff] = useState<StaffCard[]>(INITIAL_STAFF);
   const [franchises, setFranchises] = useState<Franchise[]>(INITIAL_FRANCHISES);
   const [fpos, setFpos] = useState<FPO[]>(INITIAL_FPOS);
@@ -133,8 +133,8 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
     enquiries:       { title: "Website Enquiries", sub: "Messages from the website contact form — reply, convert sales enquiries to leads, archive." },
     customers:       { title: "Farmer Network", sub: "Directory of farmers across Odisha with crop profiles and purchase history." },
     farmer:          { title: "Farmer Profile", sub: "Land holding, livestock breakdown, crops and past orders." },
-    products:        { title: "Product Catalog", sub: "Seeds, fertilizers, equipment and organic produce available for dispatch." },
-    staffonboarding: { title: "Staff Onboarding", sub: "Recruitment funnel for telecallers, warehouse personnel and hub managers." },
+    products:        { title: "Products", sub: "Website catalogue — stock, price, visibility and 30-day sales for every product." },
+    staffonboarding: { title: "User Onboarding", sub: "Recruitment funnel for telecallers, warehouse personnel and hub managers." },
     franchise:       { title: "Franchise Hubs", sub: "Performance, sales volume and payout management across Maniksthu Agri Hubs." },
     fpo:             { title: "FPO Collectives", sub: "Farmer Producer Organisations partnered with Maniksthu." },
     inventory:       { title: "Central Inventory", sub: "Real-time stock audits across Bhubaneswar, Cuttack, Balasore & Berhampur." },
@@ -224,14 +224,14 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
     showToast(`Lead #${lead.id} created in ${vertical} and assigned to ${caller}`);
   };
 
-  // Career enquiry → staff onboarding pipeline
+  // Career enquiry → user onboarding pipeline
   const handleMoveToOnboarding = (enquiry: WebEnquiry) => {
     if (staff.some(s => s.name === enquiry.name)) {
-      showToast(`${enquiry.name} is already in Staff onboarding`);
+      showToast(`${enquiry.name} is already in User onboarding`);
       return;
     }
     setStaff([...staff, { id: `S-${staff.length + 1}`, name: enquiry.name, role: 'Applicant · from website', location: '—', stage: 'Applied' }]);
-    showToast(`${enquiry.name} added to Staff onboarding`);
+    showToast(`${enquiry.name} added to User onboarding`);
   };
 
   // Add Staff Member
@@ -377,8 +377,10 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
 
           {activePage === 'products' && (
             <ProductsView
-              products={products}
-              onOpenAddProductModal={() => setActiveModal('addProduct')}
+              products={catalogProducts}
+              onProductsChange={setCatalogProducts}
+              orders={salesOrders}
+              onToast={showToast}
             />
           )}
 
