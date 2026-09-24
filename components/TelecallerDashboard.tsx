@@ -150,8 +150,7 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
     <div>
       {toastMessage && <div className="toast">✅ {toastMessage}</div>}
 
-      <HeaderFrieze />
-
+      <div className="app-header">
       <div className="masthead">
         <div className="masthead-bar">
           <div className="brand">
@@ -165,8 +164,22 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
             <span>Morning shift · 9:00–18:00</span>
             <span style={{ opacity: 0.5 }}>|</span>
             <span>Staff ID: {user.staffId}</span>
+
+            <div className="masthead-user">
+              <div className="who" style={{ cursor: 'default' }}>
+                <div className="avatar">{user.initials}</div>
+                <div>
+                  <div className="who-name">{user.name}</div>
+                  <div className="who-role">Telecalling Staff</div>
+                </div>
+              </div>
+              <LogoutButton />
+            </div>
           </div>
         </div>
+      </div>
+
+      <HeaderFrieze />
       </div>
 
       <div className="shell">
@@ -223,14 +236,6 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
                 <Bell size={18} />
                 {notifications.length > 0 && <span className="badge">{notifications.length}</span>}
               </button>
-              <div className="who" style={{ cursor: 'default' }}>
-                <div className="avatar">{user.initials}</div>
-                <div>
-                  <div className="who-name">{user.name}</div>
-                  <div className="who-role">Telecalling Staff</div>
-                </div>
-              </div>
-              <LogoutButton />
             </div>
           </div>
 
@@ -258,15 +263,10 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
         </main>
       </div>
 
-      <FooterFrieze />
       <footer className="site-footer">
         <div>© 2026 Maniksthu Agri Network · Odisha</div>
-        <div className="links">
-          <span onClick={() => showToast('Telecalling support: +91 674 290182')}>Support</span>
-          <span onClick={() => showToast('Call script handbook opened')}>Documentation</span>
-          <span onClick={() => showToast('Privacy compliance active')}>Privacy</span>
-        </div>
       </footer>
+      <FooterFrieze />
 
       <NotificationsDrawer
         isOpen={isNotifsOpen}

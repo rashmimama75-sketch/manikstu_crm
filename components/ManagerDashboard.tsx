@@ -12,7 +12,6 @@ import NotificationsDrawer from './NotificationsDrawer';
 // Views
 import DashboardView from './views/DashboardView';
 import OrdersView from './views/OrdersView';
-import OrderTrackingView from './views/OrderTrackingView';
 import EnquiriesView from './views/EnquiriesView';
 import CustomersView from './views/CustomersView';
 import FarmerDetailsView from './views/FarmerDetailsView';
@@ -26,9 +25,6 @@ import ReportsView from './views/ReportsView';
 
 // Initial Data
 import {
-  INITIAL_ORDERS,
-  INITIAL_LEADS,
-  INITIAL_ENQUIRIES,
   INITIAL_CUSTOMERS,
   INITIAL_PRODUCTS,
   INITIAL_STAFF,
@@ -36,8 +32,6 @@ import {
   INITIAL_FPOS,
   INITIAL_INVENTORY,
   INITIAL_TRANSACTIONS,
-  Order,
-  Enquiry,
   Customer,
   Product,
   StaffCard,
@@ -46,12 +40,29 @@ import {
   InventoryItem,
   Transaction
 } from '../data/initialData';
+import {
+  SALES_ORDERS,
+  TRACKER_PRODUCTS,
+  TRACKER_LEADS,
+  WEB_ENQUIRIES,
+  TELECALLERS,
+  VERTICALS,
+  STAGES,
+  SalesOrder,
+  PaymentMethod,
+  OrderSource,
+  TrackerLead,
+  WebEnquiry,
+} from '../data/managerDashboard';
+import { nowStamp } from '../lib/format';
 import type { SessionUser } from '../lib/session';
+
+const ORDER_PRODUCTS = TRACKER_PRODUCTS.filter(p => p.vertical_id === 1);
+const ORDER_CITIES = ['Bhubaneswar', 'Cuttack', 'Berhampur', 'Sambalpur', 'Balasore', 'Koraput', 'Rayagada', 'Bolangir', 'Keonjhar', 'Angul'];
 
 export default function ManagerDashboard({ user }: { user: SessionUser }) {
   // Page Routing State
   const [activePage, setActivePage] = useState<string>('dashboard');
-  const [selectedOrderId, setSelectedOrderId] = useState<string>('MK-2460');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [currentTerritory, setCurrentTerritory] = useState<string>('All Odisha');
 
@@ -62,9 +73,11 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Data Stores
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
-  const [leads] = useState(INITIAL_LEADS);
-  const [enquiries, setEnquiries] = useState<Enquiry[]>(INITIAL_ENQUIRIES);
+  // Website orders + telecaller sales, shared by the dashboard and the Orders page
+  const [salesOrders, setSalesOrders] = useState<SalesOrder[]>(SALES_ORDERS);
+  // Telecalling leads and website enquiries, shared by the dashboard and the Enquiries page
+  const [trackerLeads, setTrackerLeads] = useState<TrackerLead[]>(TRACKER_LEADS);
+  const [webEnquiries, setWebEnquiries] = useState<WebEnquiry[]>(WEB_ENQUIRIES);
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [staff, setStaff] = useState<StaffCard[]>(INITIAL_STAFF);
@@ -86,12 +99,13 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
 
   // Form States
   const [newOrderCustomer, setNewOrderCustomer] = useState('');
-  const [newOrderProduct, setNewOrderProduct] = useState('');
-  const [newOrderAmount, setNewOrderAmount] = useState('');
-  const [newOrderLocation, setNewOrderLocation] = useState('Cuttack');
+  const [newOrderPhone, setNewOrderPhone] = useState('');
+  const [newOrderCity, setNewOrderCity] = useState('Cuttack');
+  const [newOrderProductId, setNewOrderProductId] = useState(ORDER_PRODUCTS[0].id);
+  const [newOrderQty, setNewOrderQty] = useState('1');
+  const [newOrderMethod, setNewOrderMethod] = useState<PaymentMethod>('COD');
+  const [newOrderSource, setNewOrderSource] = useState<OrderSource>('telecaller');
 
-  const [newEnquiryName, setNewEnquiryName] = useState('');
-  const [newEnquiryInterest, setNewEnquiryInterest] = useState('Drip irrigation setup');
 
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffRole, setNewStaffRole] = useState('Telecaller');
@@ -114,10 +128,9 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
 
   // Nav metadata
   const pageMeta: Record<string, { title: string; sub: string }> = {
-    dashboard:       { title: "Manager Dashboard", sub: "Territory operational overview — orders, leads, inventory and manager approvals." },
-    orders:          { title: "Order Fulfillment", sub: "Oversee order lifecycle from placement, payment verification to delivery." },
-    tracking:        { title: "Shipment Tracking", sub: "Step-by-step courier timeline and escrow status." },
-    enquiries:       { title: "Telecalling Desk", sub: "Incoming farmer inquiries routed to telecallers for conversion." },
+    dashboard:       { title: "Manager Dashboard", sub: "Telecalling team, sales pipeline, website orders and enquiries at a glance." },
+    orders:          { title: "Orders", sub: "Website and telecaller orders — confirm, ship, deliver and collect payment." },
+    enquiries:       { title: "Website Enquiries", sub: "Messages from the website contact form — reply, convert sales enquiries to leads, archive." },
     customers:       { title: "Farmer Network", sub: "Directory of farmers across Odisha with crop profiles and purchase history." },
     farmer:          { title: "Farmer Profile", sub: "Land holding, livestock breakdown, crops and past orders." },
     products:        { title: "Product Catalog", sub: "Seeds, fertilizers, equipment and organic produce available for dispatch." },
@@ -131,37 +144,10 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
 
   const currentMeta = pageMeta[activePage] || pageMeta.dashboard;
 
-  // Track Order Trigger
-  const handleTrackOrder = (orderId: string) => {
-    setSelectedOrderId(orderId);
-    setActivePage('tracking');
-  };
-
   // Select Customer Profile Trigger
   const handleSelectCustomer = (cust: Customer) => {
     setSelectedCustomer(cust);
     setActivePage('farmer');
-  };
-
-  // Advance Order Timeline
-  const handleAdvanceTimeline = (orderId: string) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        let nextStatus: Order['status'] = 'Delivered';
-        if (o.status === 'Payment pending') nextStatus = 'Confirmed';
-        else if (o.status === 'Confirmed') nextStatus = 'In transit';
-        else if (o.status === 'In transit') nextStatus = 'Delivered';
-        return { ...o, status: nextStatus, paymentStatus: 'Paid' };
-      }
-      return o;
-    }));
-    showToast(`Order ${orderId} status advanced!`);
-  };
-
-  // Update Order Status directly from table
-  const handleUpdateOrderStatus = (orderId: string, status: Order['status']) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
-    showToast(`Order ${orderId} updated to ${status}`);
   };
 
   // Move Staff Stage
@@ -181,43 +167,71 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
   // Create New Order
   const handleCreateOrder = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newOrderCustomer || !newOrderProduct) return;
-    const newId = `MK-${Math.floor(2462 + Math.random() * 100)}`;
-    const newOrd: Order = {
-      id: newId,
-      customer: newOrderCustomer,
-      location: newOrderLocation,
-      product: newOrderProduct,
-      amount: Number(newOrderAmount) || 1200,
-      status: 'Confirmed',
-      paymentStatus: 'Paid',
-      date: 'Today'
+    if (!newOrderCustomer.trim() || !newOrderPhone.trim()) return;
+    const product = ORDER_PRODUCTS.find(p => p.id === newOrderProductId)!;
+    const quantity = Math.max(1, Number(newOrderQty) || 1);
+    const id = Math.max(...salesOrders.map(o => o.id)) + 1;
+    const orderNumber = `${newOrderSource === 'website' ? 'MNK' : 'TC'}-${id}`;
+    const placed = nowStamp();
+    const newOrd: SalesOrder = {
+      id,
+      order_number: orderNumber,
+      source: newOrderSource,
+      caller_id: null,
+      customer_name: newOrderCustomer.trim(),
+      phone: newOrderPhone.trim(),
+      address: '',
+      city: newOrderCity,
+      state: 'Odisha',
+      pincode: '',
+      items: [{ product_name: product.name, quantity, price: product.price }],
+      total: product.price * quantity,
+      status: 'pending',
+      payment_status: 'unpaid',
+      payment_method: newOrderMethod,
+      notes: 'Created by manager',
+      created_at: placed,
+      status_history: [{ status: 'pending', at: placed }],
     };
-    setOrders([newOrd, ...orders]);
+    setSalesOrders([newOrd, ...salesOrders]);
     setActiveModal(null);
     setNewOrderCustomer('');
-    setNewOrderProduct('');
-    setNewOrderAmount('');
-    showToast(`New Order ${newId} created successfully!`);
+    setNewOrderPhone('');
+    setNewOrderQty('1');
+    showToast(`Order ${orderNumber} created`);
   };
 
-  // Create New Enquiry
-  const handleCreateEnquiry = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEnquiryName) return;
-    const newEnq: Enquiry = {
-      id: `ENQ-${Math.floor(342 + Math.random() * 50)}`,
-      name: newEnquiryName,
-      interestedIn: newEnquiryInterest,
-      source: 'Direct Telecall',
-      assignedTo: 'Ananya Mishra',
-      status: 'New',
-      received: 'Just now'
+  // Website enquiry → telecalling lead in the first stage of the chosen vertical
+  const handleConvertToLead = (enquiry: WebEnquiry, verticalId: number, callerId: number) => {
+    if (!enquiry.phone) return;
+    const firstStage = STAGES.filter(s => s.vertical_id === verticalId).sort((a, b) => a.sort_order - b.sort_order)[0];
+    const now = nowStamp();
+    const lead: TrackerLead = {
+      id: Math.max(...trackerLeads.map(l => l.id)) + 1,
+      vertical_id: verticalId,
+      stage_id: firstStage.id,
+      assigned_to: callerId,
+      customer_name: enquiry.name,
+      phone: enquiry.phone,
+      source: 'Website',
+      created_at: now,
+      updated_at: now,
     };
-    setEnquiries([newEnq, ...enquiries]);
-    setActiveModal(null);
-    setNewEnquiryName('');
-    showToast(`Enquiry ${newEnq.id} assigned to team!`);
+    setTrackerLeads([lead, ...trackerLeads]);
+    setWebEnquiries(prev => prev.map(e => (e.id === enquiry.id ? { ...e, lead_id: lead.id, status: e.status === 'new' ? 'read' : e.status } : e)));
+    const caller = TELECALLERS.find(t => t.id === callerId)?.name;
+    const vertical = VERTICALS.find(v => v.id === verticalId)?.name;
+    showToast(`Lead #${lead.id} created in ${vertical} and assigned to ${caller}`);
+  };
+
+  // Career enquiry → staff onboarding pipeline
+  const handleMoveToOnboarding = (enquiry: WebEnquiry) => {
+    if (staff.some(s => s.name === enquiry.name)) {
+      showToast(`${enquiry.name} is already in Staff onboarding`);
+      return;
+    }
+    setStaff([...staff, { id: `S-${staff.length + 1}`, name: enquiry.name, role: 'Applicant · from website', location: '—', stage: 'Applied' }]);
+    showToast(`${enquiry.name} added to Staff onboarding`);
   };
 
   // Add Staff Member
@@ -270,17 +284,22 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
         </div>
       )}
 
-      {/* Header Frieze */}
-      <HeaderFrieze />
-
-      {/* Masthead */}
+      {/* Masthead + Warli band: stay at the top while the page scrolls */}
+      <div className="app-header">
       <Masthead
         currentTerritory={currentTerritory}
         onTerritoryChange={(terr) => {
           setCurrentTerritory(terr);
           showToast(`Territory switched to: ${terr}`);
         }}
+        userName={user.name}
+        userInitials={user.initials}
+        onOpenProfile={() => setActiveModal('profile')}
       />
+
+      {/* Header Frieze */}
+      <HeaderFrieze />
+      </div>
 
       {/* Main Shell */}
       <div className="shell">
@@ -288,8 +307,8 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
           activePage={activePage}
           onSelectPage={setActivePage}
           counts={{
-            orders: orders.length,
-            enquiries: enquiries.filter(e => e.status === 'New').length,
+            orders: salesOrders.filter(o => o.status === 'pending').length,
+            enquiries: webEnquiries.filter(e => e.status === 'new').length,
             staff: staff.filter(s => s.stage === 'Applied').length
           }}
         />
@@ -304,52 +323,40 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
             onToggleTheme={handleToggleTheme}
             unreadNotifsCount={notifications.length}
             onToggleNotifs={() => setIsNotifsOpen(!isNotifsOpen)}
-            onOpenProfile={() => setActiveModal('profile')}
             onQuickAction={() => setActiveModal('quickAction')}
-            userName={user.name}
-            userInitials={user.initials}
           />
 
           {/* PAGE ROUTING */}
           {activePage === 'dashboard' && (
             <DashboardView
-              orders={orders}
-              leads={INITIAL_LEADS}
-              staff={staff}
-              franchises={franchises}
-              inventory={inventory}
-              transactions={transactions}
+              orders={salesOrders}
+              leads={trackerLeads}
+              onLeadsChange={setTrackerLeads}
+              enquiries={webEnquiries}
+              onEnquiriesChange={setWebEnquiries}
               onNavigate={setActivePage}
-              onTrackOrder={handleTrackOrder}
+              onToast={showToast}
             />
           )}
 
           {activePage === 'orders' && (
             <OrdersView
-              orders={orders}
-              onTrackOrder={handleTrackOrder}
+              orders={salesOrders}
+              onOrdersChange={setSalesOrders}
               onOpenNewOrderModal={() => setActiveModal('newOrder')}
-              onUpdateOrderStatus={handleUpdateOrderStatus}
-            />
-          )}
-
-          {activePage === 'tracking' && (
-            <OrderTrackingView
-              orderId={selectedOrderId}
-              orders={orders}
-              onBack={() => setActivePage('orders')}
-              onAdvanceTimeline={handleAdvanceTimeline}
+              onToast={showToast}
             />
           )}
 
           {activePage === 'enquiries' && (
             <EnquiriesView
-              enquiries={enquiries}
-              onOpenNewEnquiryModal={() => setActiveModal('newEnquiry')}
-              onUpdateEnquiryStatus={(id, st) => {
-                setEnquiries(prev => prev.map(e => e.id === id ? { ...e, status: st } : e));
-                showToast(`Enquiry updated to ${st}`);
-              }}
+              enquiries={webEnquiries}
+              onEnquiriesChange={setWebEnquiries}
+              leads={trackerLeads}
+              orders={salesOrders}
+              onConvertToLead={handleConvertToLead}
+              onMoveToOnboarding={handleMoveToOnboarding}
+              onToast={showToast}
             />
           )}
 
@@ -419,18 +426,13 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
         </main>
       </div>
 
-      {/* Footer Frieze */}
-      <FooterFrieze />
-
       {/* Footer */}
       <footer className="site-footer">
         <div>© 2026 Maniksthu Agri Network · Territory Operations Manager</div>
-        <div className="links">
-          <span onClick={() => showToast('Manager Desk Support: +91 674 290182')}>Support Desk</span>
-          <span onClick={() => showToast('SLA Manual loaded')}>SLA Guidelines</span>
-          <span onClick={() => showToast('Privacy Compliance Active')}>District Data Policy</span>
-        </div>
       </footer>
+
+      {/* Footer Frieze */}
+      <FooterFrieze />
 
       {/* Manager Notifications Drawer */}
       <NotificationsDrawer
@@ -458,34 +460,56 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
               onChange={(e) => setNewOrderCustomer(e.target.value)}
             />
           </div>
-          <div className="form-group">
-            <label>Location / District</label>
-            <select value={newOrderLocation} onChange={(e) => setNewOrderLocation(e.target.value)}>
-              <option value="Cuttack">Cuttack</option>
-              <option value="Puri">Puri</option>
-              <option value="Bhubaneswar">Bhubaneswar</option>
-              <option value="Balasore">Balasore</option>
-              <option value="Berhampur">Berhampur</option>
-            </select>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Phone</label>
+              <input
+                type="tel"
+                required
+                placeholder="10-digit mobile"
+                value={newOrderPhone}
+                onChange={(e) => setNewOrderPhone(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label>City / District</label>
+              <select value={newOrderCity} onChange={(e) => setNewOrderCity(e.target.value)}>
+                {ORDER_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
-          <div className="form-group">
-            <label>Product</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Swarna Paddy Seed, 20kg"
-              value={newOrderProduct}
-              onChange={(e) => setNewOrderProduct(e.target.value)}
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label>Product</label>
+              <select value={newOrderProductId} onChange={(e) => setNewOrderProductId(Number(e.target.value))}>
+                {ORDER_PRODUCTS.map(p => <option key={p.id} value={p.id}>{p.name} · ₹{p.price}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Quantity</label>
+              <input type="number" min={1} value={newOrderQty} onChange={(e) => setNewOrderQty(e.target.value)} />
+            </div>
           </div>
-          <div className="form-group">
-            <label>Amount (₹)</label>
-            <input
-              type="number"
-              placeholder="2400"
-              value={newOrderAmount}
-              onChange={(e) => setNewOrderAmount(e.target.value)}
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label>Payment method</label>
+              <select value={newOrderMethod} onChange={(e) => setNewOrderMethod(e.target.value as PaymentMethod)}>
+                <option value="COD">Cash on delivery</option>
+                <option value="UPI">UPI</option>
+                <option value="Card">Card</option>
+                <option value="Net banking">Net banking</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Source</label>
+              <select value={newOrderSource} onChange={(e) => setNewOrderSource(e.target.value as OrderSource)}>
+                <option value="telecaller">Phone / telecaller</option>
+                <option value="website">Website</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-total">
+            Total: <strong>₹{((ORDER_PRODUCTS.find(p => p.id === newOrderProductId)?.price ?? 0) * Math.max(1, Number(newOrderQty) || 1)).toLocaleString('en-IN')}</strong>
           </div>
           <div className="modal-footer">
             <button type="button" className="btn-secondary" onClick={() => setActiveModal(null)}>Cancel</button>
@@ -494,38 +518,6 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
         </form>
       </Modal>
 
-      {/* 2. New Enquiry Modal */}
-      <Modal
-        isOpen={activeModal === 'newEnquiry'}
-        onClose={() => setActiveModal(null)}
-        title="Record New Inquiry"
-      >
-        <form onSubmit={handleCreateEnquiry}>
-          <div className="form-group">
-            <label>Farmer Name</label>
-            <input
-              type="text"
-              required
-              placeholder="Farmer / Buyer Name"
-              value={newEnquiryName}
-              onChange={(e) => setNewEnquiryName(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Interested Product / Solution</label>
-            <input
-              type="text"
-              required
-              value={newEnquiryInterest}
-              onChange={(e) => setNewEnquiryInterest(e.target.value)}
-            />
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn-secondary" onClick={() => setActiveModal(null)}>Cancel</button>
-            <button type="submit" className="btn-primary">Assign Lead</button>
-          </div>
-        </form>
-      </Modal>
 
       {/* 3. Add Staff Modal */}
       <Modal
