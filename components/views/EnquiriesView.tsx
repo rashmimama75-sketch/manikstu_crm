@@ -10,8 +10,9 @@ import {
   TrackerLead,
   WebEnquiry,
 } from '../../data/managerDashboard';
-import { MONTH, ORDER_CHIP, ago, daysBefore, nowStamp, rupees, shortDateTime } from '../../lib/format';
-import { downloadCsv } from '../../lib/csv';
+import { MONTH, ORDER_CHIP, ago, daysBefore, nowStamp, rupees, shortDate, shortDateTime } from '../../lib/format';
+import { ExportFormat, exportTable } from '../../lib/export';
+import ExportMenu from '../ExportMenu';
 
 interface EnquiriesViewProps {
   enquiries: WebEnquiry[];
@@ -146,12 +147,37 @@ export default function EnquiriesView({
     onToast('Note saved');
   };
 
-  const exportRows = (rows: WebEnquiry[]) =>
-    downloadCsv(
-      `enquiries-${TODAY}.csv`,
-      ['Received', 'Name', 'Email', 'Phone', 'Type', 'Status', 'Replied', 'Message', 'Notes'],
-      rows.map(e => [e.created_at.replace('T', ' '), e.name, e.email, e.phone, e.type, e.status, e.replied_at?.replace('T', ' ') ?? '', e.message, e.admin_notes]),
-    );
+  const exportRows = async (rows: WebEnquiry[], format: ExportFormat, scope: string) => {
+    if (rows.length === 0) {
+      onToast('No enquiries to export');
+      return;
+    }
+    try {
+      await exportTable(format, {
+        filename: `enquiries-${TODAY}`,
+        title: 'Website Enquiries',
+        subtitle: `${rows.length} ${rows.length === 1 ? 'enquiry' : 'enquiries'} · ${scope} · exported ${shortDate(TODAY)}`,
+        columns: [
+          { header: 'Received', width: 16 },
+          { header: 'Name', width: 20 },
+          { header: 'Email', width: 28 },
+          { header: 'Phone', width: 13 },
+          { header: 'Type', width: 11 },
+          { header: 'Status', width: 10 },
+          { header: 'Replied', width: 16 },
+          { header: 'Message', width: 50 },
+          { header: 'Notes', width: 26 },
+        ],
+        rows: rows.map(e => [
+          shortDateTime(e.created_at), e.name, e.email, e.phone, e.type, e.status,
+          e.replied_at ? shortDateTime(e.replied_at) : '', e.message, e.admin_notes,
+        ]),
+      });
+      onToast(`Exported ${rows.length} ${rows.length === 1 ? 'enquiry' : 'enquiries'} to ${format === 'excel' ? 'Excel' : 'PDF'}`);
+    } catch {
+      onToast('Export failed. Please try again.');
+    }
+  };
 
   // ---- Selection ---------------------------------------------------------------------------
   const allOnPageSelected = pageRows.length > 0 && pageRows.every(e => selected.has(e.id));
@@ -236,7 +262,7 @@ export default function EnquiriesView({
           ))}
         </div>
         <div className="toolbar-actions">
-          <button className="btn-secondary" onClick={() => exportRows(filtered)}>Export CSV</button>
+          <ExportMenu onExport={format => exportRows(filtered, format, 'current filters')} />
         </div>
       </div>
 
@@ -267,7 +293,7 @@ export default function EnquiriesView({
           <button className="btn-secondary btn-small" onClick={() => markRead(selectedIds)}>Mark read</button>
           <button className="btn-secondary btn-small" onClick={() => markReplied(selectedIds)}>Mark replied</button>
           <button className="btn-secondary btn-small" onClick={() => archive(selectedIds)}>Archive</button>
-          <button className="btn-secondary btn-small" onClick={() => exportRows(enquiries.filter(e => selected.has(e.id)))}>Export CSV</button>
+          <ExportMenu small label="Export selected" onExport={format => exportRows(enquiries.filter(e => selected.has(e.id)), format, 'selected')} />
           <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
         </div>
       )}
@@ -430,7 +456,7 @@ export default function EnquiriesView({
               {open.type === 'career' && (
                 <section className="od-section">
                   <div className="od-label">Hiring</div>
-                  <button className="btn-secondary btn-small" onClick={() => onMoveToOnboarding(open)}>Move to Staff onboarding</button>
+                  <button className="btn-secondary btn-small" onClick={() => onMoveToOnboarding(open)}>Move to User onboarding</button>
                 </section>
               )}
 
