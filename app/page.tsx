@@ -269,9 +269,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Header Frieze */}
-      <HeaderFrieze />
-
       {/* Masthead */}
       <Masthead
         currentTerritory={currentTerritory}
@@ -280,6 +277,9 @@ export default function Home() {
           showToast(`Territory switched to: ${terr}`);
         }}
       />
+
+      {/* Header Frieze */}
+      <HeaderFrieze />
 
       {/* Main Shell */}
       <div className="shell">
@@ -416,9 +416,6 @@ export default function Home() {
         </main>
       </div>
 
-      {/* Footer Frieze */}
-      <FooterFrieze />
-
       {/* Footer */}
       <footer className="site-footer">
         <div>© 2026 Maniksthu Agri Network · Territory Operations Manager</div>
@@ -428,6 +425,9 @@ export default function Home() {
           <span onClick={() => showToast('Privacy Compliance Active')}>District Data Policy</span>
         </div>
       </footer>
+
+      {/* Footer Frieze */}
+      <FooterFrieze />
 
       {/* Manager Notifications Drawer */}
       <NotificationsDrawer

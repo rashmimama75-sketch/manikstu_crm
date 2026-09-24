@@ -63,21 +63,32 @@ button {
   cursor: pointer;
 }
 
-/* Frieze SVGs */
+/* Friezes: same artwork as the telecalling dashboard */
 .frieze {
   width: 100%;
-  height: 58px;
   display: block;
-  background: var(--forest);
 }
 
-.frieze.footer-frieze {
-  background: var(--cream);
-  transition: background 0.25s ease;
+/* Warli dancer band under the masthead */
+.frieze.warli-band {
+  height: 30px;
+  background: var(--card-bg) url('/patterns/saura-border-tight.png') repeat-x left center / auto 100%;
+  border-bottom: 1px solid var(--line);
+  transition: background-color 0.25s ease;
 }
 
-[data-theme="dark"] .frieze.footer-frieze {
-  background: var(--card-bg);
+/* Faded village scene at the foot of the page */
+.frieze.village-footer {
+  height: 140px;
+  background: url('/patterns/village-scene.png') repeat-x center bottom -30px / auto 200px;
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+}
+
+[data-theme="dark"] .frieze.village-footer {
+  mix-blend-mode: screen;
+  filter: invert(1) hue-rotate(180deg);
+  opacity: 0.3;
 }
 
 /* Masthead */
