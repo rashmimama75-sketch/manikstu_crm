@@ -424,7 +424,7 @@ export default function DashboardView({ onNavigate, onToast }: DashboardViewProp
         </div>
       </div>
 
-      <div className="grid cols-2 even">
+      <div className="grid equal-2">
         <div className="panel">
           <div className="panel-head">
             <h2>Top Products</h2>

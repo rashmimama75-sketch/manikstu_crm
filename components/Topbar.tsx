@@ -1,5 +1,6 @@
 import React from 'react';
-import { Sun, Moon, Bell, Search, User, ShieldCheck } from 'lucide-react';
+import { Sun, Moon, Bell, Search, ShieldCheck } from 'lucide-react';
+import LogoutButton from './LogoutButton';
 
 interface TopbarProps {
   title: string;
@@ -12,6 +13,8 @@ interface TopbarProps {
   onToggleNotifs: () => void;
   onOpenProfile: () => void;
   onQuickAction: () => void;
+  userName: string;
+  userInitials: string;
 }
 
 export default function Topbar({
@@ -24,7 +27,9 @@ export default function Topbar({
   unreadNotifsCount,
   onToggleNotifs,
   onOpenProfile,
-  onQuickAction
+  onQuickAction,
+  userName,
+  userInitials
 }: TopbarProps) {
   return (
     <div className="topbar">
@@ -69,14 +74,16 @@ export default function Topbar({
         </button>
 
         <div className="who" onClick={onOpenProfile} title="Manager Profile Details">
-          <div className="avatar">SN</div>
+          <div className="avatar">{userInitials}</div>
           <div>
-            <div className="who-name">Smurti Nayak</div>
+            <div className="who-name">{userName}</div>
             <div className="who-role" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <ShieldCheck size={12} color="var(--gold)" /> Territory Manager
             </div>
           </div>
         </div>
+
+        <LogoutButton />
       </div>
     </div>
   );

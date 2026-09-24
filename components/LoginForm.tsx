@@ -1,0 +1,90 @@
+'use client';
+
+import React, { useState } from 'react';
+
+const DEMO_ACCOUNTS = [
+  { label: 'Manager', email: 'smurti@maniksthu.in', password: 'manager123' },
+  { label: 'Telecaller', email: 'ananya@maniksthu.in', password: 'telecaller123' },
+];
+
+export default function LoginForm({ showDemoAccounts }: { showDemoAccounts: boolean }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Sign in failed');
+        setSubmitting(false);
+        return;
+      }
+      // Full navigation so middleware sees the new session cookie.
+      window.location.assign(data.redirectTo);
+    } catch {
+      setError('Could not reach the server. Try again.');
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <form onSubmit={handleSubmit} className="login-form">
+        <div className="form-group">
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="username"
+            required
+            placeholder="name@maniksthu.in"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        {error && <div className="login-error" role="alert">{error}</div>}
+        <button type="submit" className="btn-primary login-submit" disabled={submitting}>
+          {submitting ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+
+      {showDemoAccounts && (
+        <div className="demo-accounts">
+          <div className="demo-accounts-label">Demo accounts (dev only)</div>
+          {DEMO_ACCOUNTS.map(acc => (
+            <button
+              key={acc.email}
+              type="button"
+              className="demo-account"
+              onClick={() => { setEmail(acc.email); setPassword(acc.password); setError(null); }}
+            >
+              <strong>{acc.label}</strong>
+              <span>{acc.email} · {acc.password}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
