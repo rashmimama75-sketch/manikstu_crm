@@ -135,8 +135,8 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
     farmer:          { title: "Farmer Profile", sub: "Land holding, livestock breakdown, crops and past orders." },
     products:        { title: "Products", sub: "Website catalogue — stock, price, visibility and 30-day sales for every product." },
     staffonboarding: { title: "User Onboarding", sub: "Recruitment funnel for telecallers, warehouse personnel and hub managers." },
-    franchise:       { title: "Franchise Hubs", sub: "Performance, sales volume and payout management across Maniksthu Agri Hubs." },
-    fpo:             { title: "FPO Collectives", sub: "Farmer Producer Organisations partnered with Maniksthu." },
+    franchise:       { title: "Franchise Hubs", sub: "Performance, sales volume and payout management across Manikstu Agri Hubs." },
+    fpo:             { title: "FPO Collectives", sub: "Farmer Producer Organisations partnered with Manikstu." },
     inventory:       { title: "Central Inventory", sub: "Real-time stock audits across Bhubaneswar, Cuttack, Balasore & Berhampur." },
     monetary:        { title: "Monetary Section", sub: "Revenue ledgers, escrow holds, pending settlements and franchise payouts." },
     reports:         { title: "Reports & Analytics", sub: "Generate and export SLA, financial, telecalling and inventory reports." }
@@ -430,7 +430,7 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
 
       {/* Footer */}
       <footer className="site-footer">
-        <div>© 2026 Maniksthu Agri Network · Territory Operations Manager</div>
+        <div>© 2026 Manikstu Agri Network · Territory Operations Manager</div>
       </footer>
 
       {/* Footer Frieze */}

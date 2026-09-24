@@ -24,7 +24,23 @@ export interface TrackerLead {
   updated_at: string;
 }
 
-export interface LeadActivity { id: number; lead_id: number; caller_id: number; stage_id: number | null; note: string; created_at: string }
+export type CallOutcome = 'Connected' | 'No answer' | 'Busy' | 'Wrong number';
+
+/** A logged call (`tracker_lead_activities`). `outcome` and `duration_sec` are not in the backend yet. */
+export interface LeadActivity {
+  id: number;
+  lead_id: number;
+  caller_id: number;
+  stage_id: number | null;
+  note: string;
+  outcome: CallOutcome;
+  duration_sec: number | null;
+  created_at: string;
+}
+
+/** Call targets per telecaller. Not in the backend yet. */
+export const CALL_TARGET_DAILY = 40;
+export const CALL_TARGET_MONTHLY = 800;
 
 export interface Followup {
   id: number;
@@ -183,14 +199,52 @@ export const TRACKER_SALES: TrackerSale[] = [];
 // The last telecaller has logged nothing today, so the dashboard has someone to flag.
 const IDLE_TODAY = 15;
 
-for (let id = 1; id <= 72; id++) {
+const CALL_NOTES: Record<CallOutcome, string[]> = {
+  Connected: [
+    'Explained product benefits', 'Shared price list on WhatsApp', 'Interested, discussing with family',
+    'Asked for dosage details', 'Will order after payday', 'Confirmed delivery address',
+  ],
+  'No answer': ['Not reachable', 'Rang out, will retry', 'No answer, try in the evening'],
+  Busy: ['Line busy', 'Phone switched off'],
+  'Wrong number': ['Wrong number, lead details need checking'],
+};
+
+function logCall(leadId: number, callerId: number, stageId: number, daysAgo: number, hour = int(9, 18)) {
+  const r = rand();
+  const outcome: CallOutcome = r < 0.55 ? 'Connected' : r < 0.83 ? 'No answer' : r < 0.95 ? 'Busy' : 'Wrong number';
+  LEAD_ACTIVITIES.push({
+    id: LEAD_ACTIVITIES.length + 1,
+    lead_id: leadId,
+    caller_id: callerId,
+    stage_id: stageId,
+    note: pick(CALL_NOTES[outcome]),
+    outcome,
+    duration_sec: outcome === 'Connected' ? int(60, 480) : null,
+    created_at: at(daysAgo, hour, int(0, 59)),
+  });
+}
+
+// When each lead was created and last touched (days ago), for placing calls realistically.
+const leadWindow = new Map<number, { created: number; lastTouch: number }>();
+
+const FOLLOWUP_NOTES: Record<number, string[]> = {
+  1: ['Confirm order quantity', 'Check if sample worked', 'Share dosage chart', 'Confirm delivery address'],
+  2: ['Share insurance form', 'Collect ear-tag photos', 'Confirm number of goats'],
+  3: ['Schedule site visit', 'Explain Goat Bank terms', 'Collect documents'],
+};
+
+// The first few leads arrived this morning and nobody has called them yet.
+const FRESH_LEADS = 8;
+
+for (let id = 1; id <= 150; id++) {
+  const fresh = id <= FRESH_LEADS;
   const vertical = pick([1, 1, 1, 1, 2, 2, 3]);
   const stages = stagesOf(vertical);
   // Weight towards early stages, like a real funnel.
-  const stageIdx = Math.min(stages.length - 1, Math.floor(Math.pow(rand(), 1.6) * stages.length));
+  const stageIdx = fresh ? 0 : Math.min(stages.length - 1, Math.floor(Math.pow(rand(), 1.6) * stages.length));
   const stage = stages[stageIdx];
-  const caller = pick(TELECALLERS).id;
-  const createdDaysAgo = int(0, 34);
+  const caller = fresh ? TELECALLERS[(id - 1) % TELECALLERS.length].id : pick(TELECALLERS).id;
+  const createdDaysAgo = fresh ? 0 : int(0, 34);
   // Most leads were touched in the last few days; a few have gone quiet.
   const lastTouch = Math.min(createdDaysAgo, rand() < 0.85 ? int(0, 2) : int(3, 12));
 
@@ -206,24 +260,22 @@ for (let id = 1; id <= 72; id++) {
     updated_at: at(lastTouch, int(9, 18), int(0, 59)),
   });
 
+  // Fresh leads get no calls (created: -1 keeps them out of the daily call volume below).
+  leadWindow.set(id, { created: fresh ? -1 : createdDaysAgo, lastTouch });
+  if (fresh) continue;
+
   // Call log: a few calls between creation and last touch.
   const calls = int(1, 4);
   for (let c = 0; c < calls; c++) {
     let day = int(lastTouch, createdDaysAgo);
     if (day === 0 && caller === IDLE_TODAY) day = 1;
-    LEAD_ACTIVITIES.push({
-      id: LEAD_ACTIVITIES.length + 1,
-      lead_id: id,
-      caller_id: caller,
-      stage_id: stage.id,
-      note: pick(['Explained product benefits', 'Asked to call back in evening', 'Shared price list on WhatsApp', 'Interested, discussing with family', 'Not reachable']),
-      created_at: at(day, int(9, 18), int(0, 59)),
-    });
+    logCall(id, caller, stage.id, day);
   }
 
   // Follow-ups for open leads.
-  if (!isWonStage(stage) && stage.name !== 'Lost' && rand() < 0.75) {
-    const dueDaysAgo = int(-3, 6); // negative = in the future
+  if (!isWonStage(stage) && stage.name !== 'Lost' && rand() < 0.8) {
+    // Mostly around today; negative = in the future
+    const dueDaysAgo = pick([-3, -2, -1, -1, 0, 0, 0, 0, 1, 1, 2, 4, 6]);
     const status: Followup['status'] =
       dueDaysAgo > 0 ? (rand() < 0.7 ? 'done' : 'missed') : dueDaysAgo === 0 && rand() < 0.3 ? 'done' : 'pending';
     const due = at(dueDaysAgo, int(10, 18));
@@ -232,7 +284,7 @@ for (let id = 1; id <= 72; id++) {
       lead_id: id,
       caller_id: caller,
       due_at: due,
-      note: pick(['Confirm order quantity', 'Collect ear-tag photos', 'Share insurance form', 'Check if sample worked', 'Schedule site visit']),
+      note: pick(FOLLOWUP_NOTES[vertical]),
       status,
       completed_at: status === 'done' ? due : null,
     });
@@ -256,6 +308,32 @@ for (let id = 1; id <= 72; id++) {
       });
     }
   }
+}
+
+// A normal month of calling: 20–34 calls per telecaller per working day (fewer so far today),
+// each to one of their leads that existed then and hadn't gone quiet yet.
+{
+  const dayOfMonth = Number(TODAY.slice(8, 10));
+  for (let d = dayOfMonth - 1; d >= 0; d--) {
+    const date = new Date(`${TODAY}T00:00:00`);
+    date.setDate(date.getDate() - d);
+    if (date.getDay() === 0) continue; // Sundays off
+    for (const t of TELECALLERS) {
+      if (d === 0 && t.id === IDLE_TODAY) continue;
+      const eligible = TRACKER_LEADS.filter(l => {
+        const w = leadWindow.get(l.id)!;
+        return l.assigned_to === t.id && w.created >= d && d >= w.lastTouch;
+      });
+      if (eligible.length === 0) continue;
+      const n = d === 0 ? int(12, 26) : int(20, 34);
+      for (let k = 0; k < n; k++) {
+        const lead = pick(eligible);
+        logCall(lead.id, t.id, lead.stage_id, d, d === 0 ? int(9, 16) : int(9, 18));
+      }
+    }
+  }
+  LEAD_ACTIVITIES.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  LEAD_ACTIVITIES.forEach((a, i) => { a.id = i + 1; });
 }
 
 // Repeat orders from existing customers (no lead attached), spread over the last 30 days.

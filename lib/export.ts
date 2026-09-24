@@ -33,7 +33,7 @@ function saveBlob(blob: Blob, filename: string) {
 export async function exportExcel({ filename, title, subtitle, columns, rows }: ExportTable) {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Maniksthu CRM';
+  wb.creator = 'Manikstu CRM';
   const ws = wb.addWorksheet(title.slice(0, 31));
 
   // Title rows above the table
@@ -112,7 +112,7 @@ export async function exportPdf({ filename, title, subtitle, columns, rows }: Ex
       const page = doc.getNumberOfPages();
       doc.setFontSize(8);
       doc.setTextColor(107, 106, 92);
-      doc.text(`Maniksthu Agri Network · page ${page}`, margin, doc.internal.pageSize.getHeight() - 16);
+      doc.text(`Manikstu Agri Network · page ${page}`, margin, doc.internal.pageSize.getHeight() - 16);
     },
   });
 

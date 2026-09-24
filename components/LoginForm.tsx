@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 
 const DEMO_ACCOUNTS = [
-  { label: 'Manager', email: 'smurti@maniksthu.in', password: 'manager123' },
-  { label: 'Telecaller', email: 'ananya@maniksthu.in', password: 'telecaller123' },
+  { label: 'Manager', email: 'smurti@manikstu.in', password: 'manager123' },
+  { label: 'Telecaller', email: 'ananya@manikstu.in', password: 'telecaller123' },
 ];
 
 export default function LoginForm({ showDemoAccounts }: { showDemoAccounts: boolean }) {
@@ -47,7 +47,7 @@ export default function LoginForm({ showDemoAccounts }: { showDemoAccounts: bool
             type="email"
             autoComplete="username"
             required
-            placeholder="name@maniksthu.in"
+            placeholder="name@manikstu.in"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />

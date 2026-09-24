@@ -190,12 +190,12 @@ export const INITIAL_STAFF: StaffCard[] = [
 ];
 
 export const INITIAL_FRANCHISES: Franchise[] = [
-  { id: 'FR-1', name: 'Maniksthu Agri Hub', location: 'Cuttack', owner: 'Bikram Rout', ordersThisMonth: 210, revenue: '₹1.4L', status: 'Active' },
-  { id: 'FR-2', name: 'Maniksthu Agri Hub', location: 'Berhampur', owner: 'Lopamudra Sethi', ordersThisMonth: 178, revenue: '₹1.1L', status: 'Active' },
-  { id: 'FR-3', name: 'Maniksthu Agri Hub', location: 'Balasore', owner: 'Ashok Nayak', ordersThisMonth: 145, revenue: '₹96K', status: 'Active' },
-  { id: 'FR-4', name: 'Maniksthu Agri Hub', location: 'Puri', owner: 'Debjani Rout', ordersThisMonth: 132, revenue: '₹88K', status: 'Active' },
-  { id: 'FR-5', name: 'Maniksthu Agri Hub', location: 'Rourkela', owner: 'Suresh Jena', ordersThisMonth: 96, revenue: '₹61K', status: 'Active' },
-  { id: 'FR-6', name: 'Maniksthu Agri Hub', location: 'Sambalpur', owner: 'Pending Assignment', ordersThisMonth: 0, revenue: '—', status: 'Onboarding' }
+  { id: 'FR-1', name: 'Manikstu Agri Hub', location: 'Cuttack', owner: 'Bikram Rout', ordersThisMonth: 210, revenue: '₹1.4L', status: 'Active' },
+  { id: 'FR-2', name: 'Manikstu Agri Hub', location: 'Berhampur', owner: 'Lopamudra Sethi', ordersThisMonth: 178, revenue: '₹1.1L', status: 'Active' },
+  { id: 'FR-3', name: 'Manikstu Agri Hub', location: 'Balasore', owner: 'Ashok Nayak', ordersThisMonth: 145, revenue: '₹96K', status: 'Active' },
+  { id: 'FR-4', name: 'Manikstu Agri Hub', location: 'Puri', owner: 'Debjani Rout', ordersThisMonth: 132, revenue: '₹88K', status: 'Active' },
+  { id: 'FR-5', name: 'Manikstu Agri Hub', location: 'Rourkela', owner: 'Suresh Jena', ordersThisMonth: 96, revenue: '₹61K', status: 'Active' },
+  { id: 'FR-6', name: 'Manikstu Agri Hub', location: 'Sambalpur', owner: 'Pending Assignment', ordersThisMonth: 0, revenue: '—', status: 'Onboarding' }
 ];
 
 export const INITIAL_FPOS: FPO[] = [

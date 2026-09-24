@@ -15,6 +15,7 @@ import {
   SalesOrder,
 } from '../../data/managerDashboard';
 import { MONTH, ORDER_CHIP, ago, dayStart, daysBefore, nowStamp, pct, rupees, rupeesShort, shortDate } from '../../lib/format';
+import HBarList from '../HBarList';
 
 interface DashboardViewProps {
   orders: SalesOrder[];
@@ -35,23 +36,6 @@ const isOpen = (lead: TrackerLead) => {
 
 const ENQUIRY_TYPES: WebEnquiry['type'][] = ['sales', 'partnership', 'career', 'general'];
 
-/** Horizontal bar list: one series, value labels at the end, hover tooltip per bar. */
-function HBarList({ rows }: { rows: { key: string; label: string; value: number; display: string; tip: string }[] }) {
-  const max = Math.max(1, ...rows.map(r => r.value));
-  return (
-    <ul className="hbar-list">
-      {rows.map(r => (
-        <li key={r.key} className="hbar-row" data-tip={r.tip}>
-          <span className="hbar-label">{r.label}</span>
-          <span className="hbar-track">
-            <span className="hbar-fill" style={{ width: `${(r.value / max) * 100}%` }} />
-          </span>
-          <span className="hbar-value">{r.display}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 export default function DashboardView({ orders, leads, onLeadsChange, enquiries, onEnquiriesChange, onNavigate, onToast }: DashboardViewProps) {
   const webOrders = orders.filter(o => o.source === 'website');
