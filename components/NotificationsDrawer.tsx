@@ -14,13 +14,15 @@ interface NotificationsDrawerProps {
   onClose: () => void;
   notifications: Notif[];
   onClearAll: () => void;
+  title?: string;
 }
 
 export default function NotificationsDrawer({
   isOpen,
   onClose,
   notifications,
-  onClearAll
+  onClearAll,
+  title = 'Manager Alerts'
 }: NotificationsDrawerProps) {
   if (!isOpen) return null;
 
@@ -29,7 +31,7 @@ export default function NotificationsDrawer({
       <div className="drawer-overlay" onClick={onClose} />
       <div className="notifications-drawer">
         <div className="drawer-head">
-          <h3>Manager Alerts</h3>
+          <h3>{title}</h3>
           <button className="modal-close" onClick={onClose}>
             <X size={18} />
           </button>
