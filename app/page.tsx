@@ -113,7 +113,7 @@ export default function Home() {
 
   // Nav metadata
   const pageMeta: Record<string, { title: string; sub: string }> = {
-    dashboard:       { title: "Manager Dashboard", sub: "Territory operational overview — orders, leads, inventory and manager approvals." },
+    dashboard:       { title: "Manager Dashboard", sub: "Telecalling team, sales pipeline, website orders and enquiries at a glance." },
     orders:          { title: "Order Fulfillment", sub: "Oversee order lifecycle from placement, payment verification to delivery." },
     tracking:        { title: "Shipment Tracking", sub: "Step-by-step courier timeline and escrow status." },
     enquiries:       { title: "Telecalling Desk", sub: "Incoming farmer inquiries routed to telecallers for conversion." },
@@ -310,14 +310,8 @@ export default function Home() {
           {/* PAGE ROUTING */}
           {activePage === 'dashboard' && (
             <DashboardView
-              orders={orders}
-              leads={INITIAL_LEADS}
-              staff={staff}
-              franchises={franchises}
-              inventory={inventory}
-              transactions={transactions}
               onNavigate={setActivePage}
-              onTrackOrder={handleTrackOrder}
+              onToast={showToast}
             />
           )}
 
