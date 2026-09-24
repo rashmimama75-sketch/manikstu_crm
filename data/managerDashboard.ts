@@ -45,24 +45,55 @@ export interface TrackerSale {
   sold_at: string;
 }
 
-export interface WebOrder {
+export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+export type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
+export type PaymentMethod = 'UPI' | 'COD' | 'Card' | 'Net banking';
+export type OrderSource = 'website' | 'telecaller';
+
+export interface OrderItem { product_name: string; quantity: number; price: number }
+
+/**
+ * One order, from either the website (`orders` + `order_items` + `customers`) or a
+ * telecaller (`tracker_sales`). `source`, `caller_id` and `status_history` are not
+ * in the backend yet: see the gaps listed on the Orders page.
+ */
+export interface SalesOrder {
   id: number;
   order_number: string;
+  source: OrderSource;
+  caller_id: number | null;
   customer_name: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  items: OrderItem[];
   total: number;
-  status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
-  payment_status: 'unpaid' | 'paid' | 'refunded';
+  status: OrderStatus;
+  payment_status: PaymentStatus;
+  payment_method: PaymentMethod;
+  notes: string | null;
   created_at: string;
+  status_history: { status: OrderStatus; at: string }[];
 }
 
+export type EnquiryType = 'general' | 'sales' | 'partnership' | 'career';
+export type EnquiryStatus = 'new' | 'read' | 'replied' | 'archived';
+
+/** Website contact-form enquiry (`enquiries` table). `lead_id` is not in the backend yet. */
 export interface WebEnquiry {
   id: number;
   name: string;
   email: string;
   phone: string | null;
-  type: 'general' | 'sales' | 'partnership' | 'career';
+  type: EnquiryType;
   message: string;
-  status: 'new' | 'read' | 'replied' | 'archived';
+  status: EnquiryStatus;
+  admin_notes: string | null;
+  replied_at: string | null;
+  customer_id: number | null;
+  lead_id: number | null;
   created_at: string;
 }
 
@@ -257,33 +288,191 @@ for (let i = 0; i < 12; i++) {
   });
 }
 
-// ---- Website orders & enquiries -----------------------------------------------------------
+// ---- Orders: website orders plus telecaller sales of physical products --------------------
 
-const ORDER_STATUSES: WebOrder['status'][] = ['pending', 'pending', 'confirmed', 'shipped', 'shipped', 'delivered', 'delivered', 'delivered', 'cancelled'];
+const CITIES = ['Bhubaneswar', 'Cuttack', 'Berhampur', 'Sambalpur', 'Balasore', 'Koraput', 'Rayagada', 'Bolangir', 'Keonjhar', 'Angul'];
+const VILLAGES = ['Kendupada', 'Baripada Road', 'Nuagaon', 'Badagaon', 'Chandapur', 'Khandagiri', 'Sunakhala', 'Rampur'];
 
-export const WEB_ORDERS: WebOrder[] = Array.from({ length: 26 }, (_, i) => {
-  const status = pick(ORDER_STATUSES);
-  const payment_status: WebOrder['payment_status'] =
-    status === 'cancelled' ? 'refunded' : status === 'pending' ? (rand() < 0.6 ? 'unpaid' : 'paid') : rand() < 0.15 ? 'unpaid' : 'paid';
+/** `daysAgo` → timestamp string, offset by extra hours (used to space out status changes). */
+function atPlus(daysAgo: number, hour: number, minute: number, extraHours: number): string {
+  const d = new Date(`${at(daysAgo, hour, minute)}:00`);
+  d.setHours(d.getHours() + extraHours);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Status, payment and history that fit an order of the given age. */
+function lifecycle(age: number, method: PaymentMethod, hour: number, minute: number) {
+  let status: OrderStatus =
+    age <= 1 ? (rand() < 0.7 ? 'pending' : 'confirmed')
+    : age <= 4 ? pick(['pending', 'confirmed', 'shipped', 'shipped'] as const)
+    : age <= 8 ? pick(['shipped', 'delivered', 'delivered'] as const)
+    : rand() < 0.08 ? 'shipped' // stuck with the courier
+    : 'delivered';
+  if (rand() < 0.08) status = 'cancelled';
+
+  const history: SalesOrder['status_history'] = [{ status: 'pending', at: atPlus(age, hour, minute, 0) }];
+  const steps: [OrderStatus, number][] = [['confirmed', 4], ['shipped', 26], ['delivered', 74]];
+  if (status === 'cancelled') history.push({ status: 'cancelled', at: atPlus(age, hour, minute, Math.min(20, age * 24)) });
+  else for (const [s, h] of steps) {
+    if (['pending', 'confirmed', 'shipped', 'delivered'].indexOf(s) > ['pending', 'confirmed', 'shipped', 'delivered'].indexOf(status)) break;
+    history.push({ status: s, at: atPlus(age, hour, minute, h) });
+  }
+
+  const prepaid = method !== 'COD';
+  const payment_status: PaymentStatus =
+    status === 'cancelled' ? (prepaid ? 'refunded' : 'unpaid')
+    : prepaid ? (status === 'pending' && rand() < 0.3 ? 'unpaid' : 'paid')
+    : status === 'delivered' && rand() < 0.8 ? 'paid' : 'unpaid';
+
+  return { status, payment_status, status_history: history };
+}
+
+const physicalProducts = TRACKER_PRODUCTS.filter(p => p.vertical_id === 1);
+
+function customerFields() {
+  const city = pick(CITIES);
   return {
-    id: i + 1,
-    order_number: `MNK-${10480 + i}`,
-    customer_name: `${pick(FIRST)} ${pick(LAST)}`,
-    total: pick([249, 346, 498, 520, 750, 825, 1100, 1375, 2250]),
-    status,
-    payment_status,
-    created_at: at(Math.floor((25 - i) * 1.1), int(8, 21), int(0, 59)),
+    phone: `9${int(100000000, 999999999)}`,
+    address: `${int(1, 240)}, ${pick(VILLAGES)}`,
+    city,
+    state: 'Odisha',
+    pincode: `7${int(50001, 69999)}`,
   };
-}).reverse();
+}
 
-export const WEB_ENQUIRIES: WebEnquiry[] = [
-  { id: 1, name: 'Gudu Pradhan', email: 'mrgudu341@gmail.com', phone: '9437011223', type: 'sales', message: 'Price for 20 mineral lick blocks?', status: 'new', created_at: at(6, 11, 20) },
-  { id: 2, name: 'Sasmita Rout', email: 'sasmita.rout@gmail.com', phone: '9861234410', type: 'sales', message: 'Is Livtherapy syrup available in Koraput?', status: 'new', created_at: at(2, 16, 5) },
-  { id: 3, name: 'Kalinga FPO', email: 'contact@kalingafpo.org', phone: '9776543210', type: 'partnership', message: 'Want to become a distributor for our 300 members.', status: 'new', created_at: at(4, 10, 40) },
-  { id: 4, name: 'Priyanka Swain', email: 'priyanka.swain@gmail.com', phone: null, type: 'career', message: 'Applying for field officer role.', status: 'new', created_at: at(1, 9, 15) },
-  { id: 5, name: 'Rakesh Majhi', email: 'rakeshmajhi@yahoo.com', phone: '9938800112', type: 'general', message: 'How does the Goat Bank work?', status: 'new', created_at: at(0, 8, 50) },
-  { id: 6, name: 'Anil Barik', email: 'anil.barik@gmail.com', phone: '9040011223', type: 'sales', message: 'Need insurance for 12 goats.', status: 'read', created_at: at(3, 13, 30) },
-  { id: 7, name: 'Maa Tarini SHG', email: 'tarinishg@gmail.com', phone: '9124455667', type: 'partnership', message: 'Training for our women members.', status: 'replied', created_at: at(8, 12, 0) },
-  { id: 8, name: 'Bishnu Das', email: 'bishnu.das@gmail.com', phone: '9853322110', type: 'sales', message: 'Bulk order of Tickclear soap.', status: 'replied', created_at: at(9, 15, 45) },
-  { id: 9, name: 'Sujata Patra', email: 'sujata.p@gmail.com', phone: null, type: 'career', message: 'Internship enquiry.', status: 'archived', created_at: at(14, 11, 10) },
+const websiteOrders: SalesOrder[] = Array.from({ length: 32 }, (_, i) => {
+  const age = Math.floor((31 - i) * 1.1);
+  const hour = int(8, 21);
+  const minute = int(0, 59);
+  const method: PaymentMethod = pick(['UPI', 'UPI', 'UPI', 'COD', 'COD', 'COD', 'Card', 'Net banking']);
+  const products = [...physicalProducts].sort(() => rand() - 0.5).slice(0, int(1, 3));
+  const items = products.map(p => ({ product_name: p.name, quantity: int(1, 4), price: p.price }));
+  return {
+    id: 1000 + i,
+    order_number: `MNK-${10480 + i}`,
+    source: 'website',
+    caller_id: null,
+    customer_name: `${pick(FIRST)} ${pick(LAST)}`,
+    ...customerFields(),
+    items,
+    total: items.reduce((a, it) => a + it.price * it.quantity, 0),
+    payment_method: method,
+    notes: rand() < 0.15 ? pick(['Deliver after 5 pm', 'Call before delivery', 'Gift pack requested']) : null,
+    created_at: at(age, hour, minute),
+    ...lifecycle(age, method, hour, minute),
+  };
+});
+
+const telecallerOrders: SalesOrder[] = TRACKER_SALES
+  .filter(s => physicalProducts.some(p => p.id === s.product_id))
+  .map(s => {
+    const product = physicalProducts.find(p => p.id === s.product_id)!;
+    const age = daysBeforeToday(s.sold_at);
+    const hour = int(9, 18);
+    const minute = int(0, 59);
+    const method: PaymentMethod = rand() < 0.7 ? 'COD' : 'UPI';
+    return {
+      id: 5000 + s.id,
+      order_number: `TC-${3000 + s.id}`,
+      source: 'telecaller',
+      caller_id: s.caller_id,
+      customer_name: s.customer_name,
+      ...customerFields(),
+      items: [{ product_name: product.name, quantity: s.quantity, price: product.price }],
+      total: s.amount,
+      payment_method: method,
+      notes: null,
+      created_at: at(age, hour, minute),
+      ...lifecycle(age, method, hour, minute),
+    };
+  });
+
+function daysBeforeToday(date: string): number {
+  return Math.round((new Date(`${TODAY}T00:00:00`).getTime() - new Date(`${date.slice(0, 10)}T00:00:00`).getTime()) / 86_400_000);
+}
+
+/** All orders, newest first. */
+export const SALES_ORDERS: SalesOrder[] = [...websiteOrders, ...telecallerOrders].sort((a, b) =>
+  b.created_at.localeCompare(a.created_at),
+);
+
+// ---- Website enquiries --------------------------------------------------------------------
+
+const ENQUIRY_EXTRAS = { admin_notes: null, replied_at: null, customer_id: null, lead_id: null };
+
+const namedEnquiries: WebEnquiry[] = [
+  { id: 1, name: 'Gudu Pradhan', email: 'mrgudu341@gmail.com', phone: '9437011223', type: 'sales', message: 'Price for 20 mineral lick blocks? We have 45 goats in our village group and want delivery to Rayagada.', status: 'new', created_at: at(6, 11, 20), ...ENQUIRY_EXTRAS },
+  { id: 2, name: 'Sasmita Rout', email: 'sasmita.rout@gmail.com', phone: '9861234410', type: 'sales', message: 'Is Livtherapy syrup available in Koraput? My goats have stopped eating properly after the rains.', status: 'new', created_at: at(2, 16, 5), ...ENQUIRY_EXTRAS },
+  { id: 3, name: 'Kalinga FPO', email: 'contact@kalingafpo.org', phone: '9776543210', type: 'partnership', message: 'We want to become a distributor for our 300 members across Kalahandi. Please share dealer margins and terms.', status: 'new', created_at: at(4, 10, 40), ...ENQUIRY_EXTRAS },
+  { id: 4, name: 'Priyanka Swain', email: 'priyanka.swain@gmail.com', phone: null, type: 'career', message: 'Applying for the field officer role. I have a B.V.Sc. and two years with a dairy cooperative.', status: 'new', created_at: at(1, 9, 15), ...ENQUIRY_EXTRAS },
+  { id: 5, name: 'Rakesh Majhi', email: 'rakeshmajhi@yahoo.com', phone: '9938800112', type: 'general', message: 'How does the Goat Bank work? Who can join and what do we pay?', status: 'new', created_at: at(0, 8, 50), ...ENQUIRY_EXTRAS },
+  { id: 6, name: 'Anil Barik', email: 'anil.barik@gmail.com', phone: '9040011223', type: 'sales', message: 'Need insurance for 12 goats. What documents are needed?', status: 'read', created_at: at(3, 13, 30), ...ENQUIRY_EXTRAS },
+  { id: 7, name: 'Maa Tarini SHG', email: 'tarinishg@gmail.com', phone: '9124455667', type: 'partnership', message: 'Can you run a goat-rearing training for our 40 women members?', status: 'replied', created_at: at(8, 12, 0), ...ENQUIRY_EXTRAS, replied_at: at(7, 10, 30), admin_notes: 'Training booked for next month at Angul.' },
+  { id: 8, name: 'Bishnu Das', email: 'bishnu.das@gmail.com', phone: '9853322110', type: 'sales', message: 'Bulk order of Tickclear soap for our cooperative, around 200 bars.', status: 'replied', created_at: at(9, 15, 45), ...ENQUIRY_EXTRAS, replied_at: at(9, 18, 10) },
+  { id: 9, name: 'Sujata Patra', email: 'sujata.p@gmail.com', phone: null, type: 'career', message: 'Internship enquiry for the summer.', status: 'archived', created_at: at(14, 11, 10), ...ENQUIRY_EXTRAS },
 ];
+
+const ENQUIRY_MESSAGES: Record<EnquiryType, string[]> = {
+  sales: [
+    'What is the price of Poshak Tatwa for 10 goats for a month?',
+    'Do you deliver Protein Block to my village? Please call me.',
+    'I want to buy Kurmi Nashak. Is cash on delivery available?',
+    'Need a quote for Multi Mineral Lick Blocks, 50 pieces.',
+    'How much is goat insurance per animal for one year?',
+    'Can I buy Pachak Tatwa and Livtherapy together at a discount?',
+  ],
+  partnership: [
+    'We run an agri input shop in Sambalpur and want to stock your products.',
+    'Our NGO works with 20 villages. Can we partner for the Goat Bank?',
+    'Interested in a franchise hub in Bolangir district.',
+  ],
+  career: [
+    'Is there any vacancy for a telecaller who speaks Odia and Hindi?',
+    'Applying for a veterinary field assistant position.',
+    'Looking for a warehouse job in Bhubaneswar.',
+  ],
+  general: [
+    'Where is your office in Bhubaneswar? I want to visit.',
+    'My order has not arrived yet. Whom should I contact?',
+    'Do you have a WhatsApp number for advice on goat health?',
+    'Can you send someone to check my sick goats?',
+  ],
+};
+
+// Some enquiries come from people who already ordered, so the detail panel can show their orders.
+const repeatCustomers = SALES_ORDERS.filter(o => o.source === 'website').slice(0, 6);
+
+const generatedEnquiries: WebEnquiry[] = Array.from({ length: 26 }, (_, i) => {
+  const type: EnquiryType = pick(['sales', 'sales', 'sales', 'general', 'general', 'partnership', 'career']);
+  const existing = i % 5 === 0 ? repeatCustomers[i / 5] : undefined;
+  const first = pick(FIRST);
+  const last = pick(LAST);
+  const name = existing?.customer_name ?? `${first} ${last}`;
+  const age = int(0, 40);
+  const hour = int(7, 22);
+  const status: EnquiryStatus =
+    age <= 1 ? (rand() < 0.75 ? 'new' : 'read')
+    : age <= 6 ? pick(['new', 'read', 'read', 'replied', 'replied'] as const)
+    : pick(['read', 'replied', 'replied', 'replied', 'archived'] as const);
+  const replyDelayHours = int(2, 60);
+  return {
+    id: 10 + i,
+    name,
+    email: `${name.toLowerCase().replace(/\s+/g, '.')}${int(1, 99)}@gmail.com`,
+    phone: existing?.phone ?? (rand() < 0.85 ? `9${int(100000000, 999999999)}` : null),
+    type,
+    message: pick(ENQUIRY_MESSAGES[type]),
+    status,
+    admin_notes: status === 'replied' && rand() < 0.3 ? pick(['Sent price list', 'Shared nearest dealer contact', 'Asked to call the helpline']) : null,
+    replied_at: status === 'replied' || (status === 'archived' && rand() < 0.5)
+      ? atPlus(age, hour, 0, Math.min(replyDelayHours, age * 24)) : null,
+    customer_id: existing ? existing.id : null,
+    lead_id: null,
+    created_at: at(age, hour, int(0, 59)),
+  };
+});
+
+/** All enquiries, newest first. */
+export const WEB_ENQUIRIES: WebEnquiry[] = [...namedEnquiries, ...generatedEnquiries].sort((a, b) =>
+  b.created_at.localeCompare(a.created_at),
+);

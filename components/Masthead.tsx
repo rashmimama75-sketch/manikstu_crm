@@ -1,11 +1,16 @@
 import React from 'react';
+import { ShieldCheck } from 'lucide-react';
+import LogoutButton from './LogoutButton';
 
 interface MastheadProps {
   currentTerritory: string;
   onTerritoryChange: (territory: string) => void;
+  userName: string;
+  userInitials: string;
+  onOpenProfile: () => void;
 }
 
-export default function Masthead({ currentTerritory, onTerritoryChange }: MastheadProps) {
+export default function Masthead({ currentTerritory, onTerritoryChange, userName, userInitials, onOpenProfile }: MastheadProps) {
   return (
     <div className="masthead">
       <div className="masthead-bar">
@@ -43,6 +48,19 @@ export default function Masthead({ currentTerritory, onTerritoryChange }: Masthe
             <option value="Berhampur South" style={{ color: '#2B2A22' }}>Berhampur South</option>
             <option value="Balasore North" style={{ color: '#2B2A22' }}>Balasore North</option>
           </select>
+
+          <div className="masthead-user">
+            <div className="who" onClick={onOpenProfile} title="Manager Profile Details">
+              <div className="avatar">{userInitials}</div>
+              <div>
+                <div className="who-name">{userName}</div>
+                <div className="who-role" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <ShieldCheck size={12} color="var(--gold)" /> Territory Manager
+                </div>
+              </div>
+            </div>
+            <LogoutButton />
+          </div>
         </div>
       </div>
     </div>

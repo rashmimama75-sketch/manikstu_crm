@@ -5,39 +5,26 @@ import {
   VERTICALS,
   STAGES,
   TRACKER_PRODUCTS,
-  TRACKER_LEADS,
   LEAD_ACTIVITIES,
   FOLLOWUPS,
   TRACKER_SALES,
-  WEB_ORDERS,
-  WEB_ENQUIRIES,
   LEAD_SOURCES,
   isWonStage,
   TrackerLead,
   WebEnquiry,
-  WebOrder,
+  SalesOrder,
 } from '../../data/managerDashboard';
+import { MONTH, ORDER_CHIP, ago, dayStart, daysBefore, nowStamp, pct, rupees, rupeesShort, shortDate } from '../../lib/format';
 
 interface DashboardViewProps {
+  orders: SalesOrder[];
+  leads: TrackerLead[];
+  onLeadsChange: React.Dispatch<React.SetStateAction<TrackerLead[]>>;
+  enquiries: WebEnquiry[];
+  onEnquiriesChange: React.Dispatch<React.SetStateAction<WebEnquiry[]>>;
   onNavigate: (page: string) => void;
   onToast: (message: string) => void;
 }
-
-const MONTH = TODAY.slice(0, 7);
-const DAY_MS = 86_400_000;
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-const dayStart = (ts: string) => new Date(`${ts.slice(0, 10)}T00:00:00`).getTime();
-const daysBefore = (ts: string) => Math.round((dayStart(TODAY) - dayStart(ts)) / DAY_MS);
-const shortDate = (ts: string) => `${Number(ts.slice(8, 10))} ${MONTH_NAMES[Number(ts.slice(5, 7)) - 1]}`;
-const ago = (ts: string) => {
-  const d = daysBefore(ts);
-  return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
-};
-const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
-const rupeesShort = (n: number) =>
-  n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : n >= 1000 ? `₹${(n / 1000).toFixed(1)}K` : rupees(n);
-const pct = (num: number, den: number) => (den === 0 ? 0 : Math.round((num / den) * 100));
 
 const callerName = (id: number) => TELECALLERS.find(t => t.id === id)?.name ?? 'Unassigned';
 const stageById = (id: number) => STAGES.find(s => s.id === id);
@@ -46,13 +33,6 @@ const isOpen = (lead: TrackerLead) => {
   return !isWonStage(stage) && stage?.name !== 'Lost';
 };
 
-const ORDER_CHIP: Record<WebOrder['status'], string> = {
-  pending: 'pending',
-  confirmed: 'confirmed',
-  shipped: 'transit',
-  delivered: 'delivered',
-  cancelled: 'muted',
-};
 const ENQUIRY_TYPES: WebEnquiry['type'][] = ['sales', 'partnership', 'career', 'general'];
 
 /** Horizontal bar list: one series, value labels at the end, hover tooltip per bar. */
@@ -73,9 +53,8 @@ function HBarList({ rows }: { rows: { key: string; label: string; value: number;
   );
 }
 
-export default function DashboardView({ onNavigate, onToast }: DashboardViewProps) {
-  const [leads, setLeads] = useState<TrackerLead[]>(TRACKER_LEADS);
-  const [enquiries, setEnquiries] = useState<WebEnquiry[]>(WEB_ENQUIRIES);
+export default function DashboardView({ orders, leads, onLeadsChange, enquiries, onEnquiriesChange, onNavigate, onToast }: DashboardViewProps) {
+  const webOrders = orders.filter(o => o.source === 'website');
   const [verticalId, setVerticalId] = useState<number>(VERTICALS[0].id);
 
   const salesMonth = TRACKER_SALES.filter(s => s.sold_at.startsWith(MONTH));
@@ -88,7 +67,7 @@ export default function DashboardView({ onNavigate, onToast }: DashboardViewProp
     const converted = leadsMonth.filter(l => soldLeadIds.has(l.id)).length;
     const dueToday = FOLLOWUPS.filter(f => f.due_at.startsWith(TODAY) && f.status === 'pending').length;
     const missedMonth = FOLLOWUPS.filter(f => f.due_at.startsWith(MONTH) && f.status === 'missed').length;
-    const ordersMonth = WEB_ORDERS.filter(o => o.created_at.startsWith(MONTH));
+    const ordersMonth = webOrders.filter(o => o.created_at.startsWith(MONTH));
     const newEnquiries = enquiries.filter(e => e.status === 'new');
     const oldestNew = Math.max(0, ...newEnquiries.map(e => daysBefore(e.created_at)));
     return {
@@ -105,7 +84,7 @@ export default function DashboardView({ onNavigate, onToast }: DashboardViewProp
       newEnquiries: newEnquiries.length,
       oldestNew,
     };
-  }, [leads, enquiries]);
+  }, [leads, enquiries, orders]);
 
   // 2. Telecaller performance
   const team = useMemo(
@@ -148,11 +127,11 @@ export default function DashboardView({ onNavigate, onToast }: DashboardViewProp
   const unreplied = enquiries.filter(e => e.status === 'new').sort((a, b) => a.created_at.localeCompare(b.created_at));
 
   const reassign = (leadId: number, callerId: number) => {
-    setLeads(prev => prev.map(l => (l.id === leadId ? { ...l, assigned_to: callerId } : l)));
+    onLeadsChange(prev => prev.map(l => (l.id === leadId ? { ...l, assigned_to: callerId } : l)));
     onToast(`${leadById(leadId).customer_name} reassigned to ${callerName(callerId)}`);
   };
   const markReplied = (id: number) => {
-    setEnquiries(prev => prev.map(e => (e.id === id ? { ...e, status: 'replied' } : e)));
+    onEnquiriesChange(prev => prev.map(e => (e.id === id ? { ...e, status: 'replied', replied_at: nowStamp() } : e)));
     onToast('Enquiry marked as replied');
   };
 
@@ -188,12 +167,12 @@ export default function DashboardView({ onNavigate, onToast }: DashboardViewProp
   }).sort((a, b) => b.leads - a.leads);
 
   // 6. Website orders
-  const ordersMonth = WEB_ORDERS.filter(o => o.created_at.startsWith(MONTH));
+  const ordersMonth = webOrders.filter(o => o.created_at.startsWith(MONTH));
   const orderCounts = (['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'] as const).map(st => ({
     st,
     n: ordersMonth.filter(o => o.status === st).length,
   }));
-  const unpaid = WEB_ORDERS.filter(o => o.payment_status === 'unpaid' && o.status !== 'cancelled');
+  const unpaid = webOrders.filter(o => o.payment_status === 'unpaid' && o.status !== 'cancelled');
 
   return (
     <>
@@ -229,7 +208,6 @@ export default function DashboardView({ onNavigate, onToast }: DashboardViewProp
       <div className="panel" style={{ marginBottom: 20 }}>
         <div className="panel-head">
           <h2>Telecaller Performance</h2>
-          <span className="link" onClick={() => onNavigate('enquiries')}>Telecalling Desk</span>
         </div>
         <div className="table-wrap">
           <table className="team-table">
@@ -490,7 +468,7 @@ export default function DashboardView({ onNavigate, onToast }: DashboardViewProp
                 </tr>
               </thead>
               <tbody>
-                {WEB_ORDERS.slice(0, 5).map(o => (
+                {webOrders.slice(0, 5).map(o => (
                   <tr key={o.id}>
                     <td>
                       {o.order_number}
@@ -510,8 +488,8 @@ export default function DashboardView({ onNavigate, onToast }: DashboardViewProp
         <div className="panel">
           <div className="panel-head">
             <h2>Website Enquiries</h2>
-            <span className="panel-meta">
-              {unreplied.length > 0 ? `Oldest waiting ${daysBefore(unreplied[0].created_at)} days` : 'All replied'}
+            <span className="link" onClick={() => onNavigate('enquiries')}>
+              {unreplied.length > 0 ? `Oldest waiting ${daysBefore(unreplied[0].created_at)} days · ` : ''}All enquiries
             </span>
           </div>
           <div className="mini-stats">
