@@ -11,7 +11,7 @@ interface UserRecord extends SessionUser {
 const USERS: UserRecord[] = [
   {
     id: 'u-mgr-042',
-    email: 'smurti@maniksthu.in',
+    email: 'smurti@manikstu.in',
     name: 'Smurti Nayak',
     initials: 'SN',
     role: 'manager',
@@ -21,7 +21,7 @@ const USERS: UserRecord[] = [
   },
   {
     id: 'u-tc-112',
-    email: 'ananya@maniksthu.in',
+    email: 'ananya@manikstu.in',
     name: 'Ananya Mishra',
     initials: 'AM',
     role: 'telecaller',

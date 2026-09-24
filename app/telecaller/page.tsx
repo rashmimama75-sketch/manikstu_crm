@@ -3,7 +3,7 @@ import TelecallerDashboard from '../../components/TelecallerDashboard';
 import { requireRole } from '../../lib/auth';
 
 export const metadata: Metadata = {
-  title: 'Maniksthu Telecalling Staff',
+  title: 'Manikstu Telecalling Staff',
 };
 
 export default async function TelecallerPage() {

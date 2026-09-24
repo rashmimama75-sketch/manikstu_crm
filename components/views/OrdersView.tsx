@@ -86,7 +86,7 @@ function printInvoice(o: SalesOrder) {
   win.document.write(`<!doctype html><title>Invoice ${o.order_number}</title>
 <style>body{font-family:system-ui,sans-serif;padding:32px;color:#2B2A22}h1{font-size:22px;margin:0}table{width:100%;border-collapse:collapse;margin-top:18px}
 th,td{text-align:left;padding:8px;border-bottom:1px solid #ddd;font-size:14px}.r{text-align:right}.muted{color:#6B6A5C;font-size:13px}</style>
-<h1>Maniksthu Agri Network</h1><p class="muted">Invoice for order ${o.order_number} · ${shortDateTime(o.created_at)}</p>
+<h1>Manikstu Agri Network</h1><p class="muted">Invoice for order ${o.order_number} · ${shortDateTime(o.created_at)}</p>
 <p><strong>${o.customer_name}</strong><br>${o.address}, ${o.city}, ${o.state} ${o.pincode}<br>${o.phone}</p>
 <table><thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Amount</th></tr></thead><tbody>${rows}</tbody>
 <tfoot><tr><th colspan="3">Total</th><th>${rupees(o.total)}</th></tr></tfoot></table>

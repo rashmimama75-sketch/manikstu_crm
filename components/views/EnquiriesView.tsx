@@ -44,7 +44,7 @@ const callerName = (id: number) => TELECALLERS.find(t => t.id === id)?.name ?? '
 const firstName = (name: string) => name.split(' ')[0];
 
 const replyTemplate = (e: WebEnquiry) =>
-  `Hello ${firstName(e.name)},\n\nThank you for contacting Maniksthu Agri Network.\n\n\n\nRegards,\nManiksthu Team\n+91 674 290182`;
+  `Hello ${firstName(e.name)},\n\nThank you for contacting Manikstu Agri Network.\n\n\n\nRegards,\nManikstu Team\n+91 674 290182`;
 
 export default function EnquiriesView({
   enquiries,
@@ -197,7 +197,7 @@ export default function EnquiriesView({
   const pastOrders = open?.phone ? orders.filter(o => o.phone === open.phone) : [];
   const linkedLead = open?.lead_id ? leads.find(l => l.id === open.lead_id) : undefined;
   const mailto = open
-    ? `mailto:${open.email}?subject=${encodeURIComponent('Re: your enquiry to Maniksthu')}&body=${encodeURIComponent(replyDraft)}`
+    ? `mailto:${open.email}?subject=${encodeURIComponent('Re: your enquiry to Manikstu')}&body=${encodeURIComponent(replyDraft)}`
     : '';
 
   return (
@@ -399,7 +399,7 @@ export default function EnquiriesView({
                   {open.phone && <a className="call-btn" href={`tel:+91${open.phone}`}><Phone size={13} /> Call</a>}
                   <a className="call-btn" href={`mailto:${open.email}`}><Mail size={13} /> Email</a>
                   {open.phone && (
-                    <a className="call-btn whatsapp" href={`https://wa.me/91${open.phone}?text=${encodeURIComponent(`Hello ${firstName(open.name)}, this is Maniksthu Agri Network replying to your enquiry.`)}`} target="_blank" rel="noreferrer">
+                    <a className="call-btn whatsapp" href={`https://wa.me/91${open.phone}?text=${encodeURIComponent(`Hello ${firstName(open.name)}, this is Manikstu Agri Network replying to your enquiry.`)}`} target="_blank" rel="noreferrer">
                       <MessageCircle size={13} /> WhatsApp
                     </a>
                   )}

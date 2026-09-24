@@ -17,7 +17,7 @@ export default function Masthead({ currentTerritory, onTerritoryChange, userName
         <div className="brand">
           <div className="brand-mark">🌾</div>
           <div>
-            <div className="brand-name">Maniksthu Manager</div>
+            <div className="brand-name">Manikstu Manager</div>
             <div className="brand-tag">
               <span>Odisha Agri-Business Operations</span>
               <span className="manager-badge">Territory Manager</span>
