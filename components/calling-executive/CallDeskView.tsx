@@ -3,7 +3,8 @@ import { Phone, PhoneOff, SkipForward } from 'lucide-react';
 import { CALL_TARGET_DAILY, CallOutcome, LeadActivity, Telecaller } from '../../data/managerDashboard';
 import { ago, pct, shortDateTime } from '../../lib/format';
 import { StatusChip } from '../telecaller/shared';
-import { OUTCOMES, OUTCOME_COLORS, QUEUE_CHIP, QueueItem, fmtDuration, stageName, stagesFor, verticalName } from '../telecaller/tcData';
+import { OUTCOMES, fmtDuration, stageName, stagesFor, verticalName } from '../telecaller/tcData';
+import { OUTCOME_COLORS, QUEUE_CHIP, QueueItem } from './queue';
 import { fillScript, scriptFor } from './scripts';
 
 export interface CallForm {

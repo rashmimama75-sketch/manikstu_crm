@@ -4,7 +4,8 @@ import { MONTH, daysBefore, pct, shortDate, shortDateTime } from '../../lib/form
 import { ExportFormat, ExportTable, exportTable } from '../../lib/export';
 import ExportMenu from '../ExportMenu';
 import HBarList from '../HBarList';
-import { OUTCOMES, OUTCOME_COLORS, QueueItem, fmtDuration, stageName, verticalName } from '../telecaller/tcData';
+import { OUTCOMES, fmtDuration, stageName, verticalName } from '../telecaller/tcData';
+import { OUTCOME_COLORS, QueueItem } from './queue';
 
 type Period = 'Today' | 'Last 7 days' | 'This month';
 const PERIODS: Period[] = ['Today', 'Last 7 days', 'This month'];

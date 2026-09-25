@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Followup, LeadActivity, TODAY, TrackerLead } from '../../data/managerDashboard';
 import { MONTH, ago, dayStart, shortDateTime } from '../../lib/format';
 import { CallButton, EmptyRow, StatusChip } from '../telecaller/shared';
-import { QUEUE_CHIP, QueueItem, fmtDuration, isOpenLead, lastCallFor, stageName, time12, verticalName } from '../telecaller/tcData';
+import { fmtDuration, isOpenLead, lastCallFor, stageName, time12, verticalName } from '../telecaller/tcData';
+import { QUEUE_CHIP, QueueItem } from './queue';
 
 // The "Call desk" section: assigned leads, calls made, pending calls and callbacks.
 

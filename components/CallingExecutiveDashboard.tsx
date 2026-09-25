@@ -20,7 +20,8 @@ import {
   TrackerLead,
 } from '../data/managerDashboard';
 import { dayStart, nowStamp } from '../lib/format';
-import { QueueItem, buildQueue, stageOf, telecallerFor } from './telecaller/tcData';
+import { stageOf } from './telecaller/tcData';
+import { QueueItem, buildQueue, callerFor } from './calling-executive/queue';
 import type { SessionUser } from '../lib/session';
 
 const tomorrow = () => {
@@ -39,7 +40,7 @@ const emptyForm = (stageId: number, nextNote = ''): CallForm => ({
 
 export default function CallingExecutiveDashboard({ user }: { user: SessionUser }) {
   const firstName = user.name.split(' ')[0];
-  const me = telecallerFor(user.name);
+  const me = callerFor(user.name);
 
   const [activePage, setActivePage] = useState('desk');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
