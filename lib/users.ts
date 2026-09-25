@@ -20,12 +20,12 @@ const USERS: UserRecord[] = [
     passwordHash: 'eda874134d519c6317eead838eeae774:de6f6c800cef09fc4d1881826d7bafe161faee6fb06d195dd65d9abd537a301b',
   },
   {
-    id: 'u-tc-112',
-    email: 'ananya@manikstu.in',
-    name: 'Ananya Mishra',
-    initials: 'AM',
-    role: 'telecaller',
-    staffId: 'MK-TC-112',
+    id: 'u-tl-101',
+    email: 'pradeep@manikstu.in',
+    name: 'Pradeep Mohanty',
+    initials: 'PM',
+    role: 'telecaller', // telecalling head: sees the whole telecalling team
+    staffId: 'MK-TL-101',
     // telecaller123
     passwordHash: 'f715cb64b374a5f7e4ccba7db216329b:815b389ee853fa0520f6f24f51f52257c8e603873ccd5ede2f01139b330d3b9f',
   },

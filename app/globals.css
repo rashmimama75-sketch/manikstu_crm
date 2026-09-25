@@ -1150,6 +1150,80 @@ td .chip { text-transform: capitalize; }
 a.btn-primary { display: inline-block; text-decoration: none; }
 .order-drawer .chip { text-transform: capitalize; }
 
+/* Lead import */
+.modal-container.wide { max-width: 920px; max-height: calc(100vh - 40px); overflow-y: auto; }
+.btn-primary { display: inline-flex; align-items: center; gap: 6px; justify-content: center; }
+.drop-zone {
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  background: var(--page-bg);
+  padding: 34px 20px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--leaf);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.drop-zone:hover, .drop-zone.dragging { border-color: var(--leaf); background: rgba(74, 140, 63, 0.06); }
+.drop-title { font-weight: 700; font-size: 15px; color: var(--ink); }
+.drop-kinds { display: flex; gap: 14px; margin-top: 6px; font-size: 12px; color: var(--ink-soft); }
+.drop-kinds span { display: inline-flex; align-items: center; gap: 4px; }
+.import-help { margin-top: 16px; font-size: 13px; color: var(--ink-soft); line-height: 1.55; }
+.import-help p { margin-bottom: 8px; }
+.import-help .btn-secondary { display: inline-flex; align-items: center; gap: 6px; }
+.import-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.import-summary .clear-alert { margin-left: auto; }
+.form-row.three { grid-template-columns: repeat(3, 1fr); }
+.import-table { max-height: 340px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; }
+.import-table th { position: sticky; top: 0; background: var(--card-bg); padding-top: 10px; }
+.import-table tr.row-skipped td { color: var(--ink-soft); }
+@media (max-width: 768px) { .form-row.three { grid-template-columns: 1fr; } }
+
+/* Head telecalling dashboard */
+.sort-btn { background: none; border: none; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.sort-btn:hover, .sort-btn.active { color: var(--leaf); }
+.roster-table tr.clickable { cursor: pointer; }
+.roster-table tr.clickable:hover td { background: rgba(74, 140, 63, 0.05); }
+.roster-table .chip { font-size: 10.5px; padding: 1px 7px; }
+.rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 11.5px; font-weight: 700; color: var(--white); }
+.rank-badge.r1 { background: var(--gold); }
+.rank-badge.r2 { background: #8C8C8C; }
+.rank-badge.r3 { background: var(--rust); }
+.alert-line { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.alert-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.alert-dot.critical { background: var(--rust); }
+.alert-dot.warning { background: var(--gold); }
+.team-alerts .attn-list li { align-items: center; }
+.feed-kind { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border-radius: 4px; padding: 1px 6px; margin-right: 4px; vertical-align: 1px; }
+.feed-kind.sale { background: #E3EFDD; color: var(--leaf); }
+.feed-kind.order { background: #FCEFD8; color: var(--gold); }
+.feed-kind.enquiry { background: #F3E3DC; color: var(--rust); }
+[data-theme="dark"] .feed-kind.sale { background: rgba(58, 112, 48, 0.25); color: #8FD882; }
+[data-theme="dark"] .feed-kind.order { background: rgba(196, 149, 42, 0.25); color: #F7D67C; }
+[data-theme="dark"] .feed-kind.enquiry { background: rgba(166, 83, 46, 0.25); color: #F0A382; }
+.caller-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.caller-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  font-family: inherit;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.caller-card:hover { border-color: var(--leaf); }
+.caller-card.active { border-color: var(--forest); box-shadow: 0 0 0 2px rgba(45, 80, 22, 0.25); }
+.caller-card.warn { border-left: 3px solid var(--rust); }
+.caller-name { font-size: 13px; font-weight: 700; color: var(--ink); }
+.caller-counts { font-size: 12px; color: var(--ink-soft); }
+
 /* Telecaller: call-next queue and log-call form */
 .queue-list { list-style: none; }
 .queue-list li {

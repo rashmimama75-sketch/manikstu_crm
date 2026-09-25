@@ -5,3 +5,6 @@ out/
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Copied from pdfjs-dist on npm install (see package.json postinstall)
+public/pdf.worker.min.mjs
