@@ -10,6 +10,7 @@ import TeamOverview from './telecaller/TeamOverview';
 import TeamLeads from './telecaller/TeamLeads';
 import TeamFollowups from './telecaller/TeamFollowups';
 import TeamSales from './telecaller/TeamSales';
+import StaffOnboarding from './telecaller/StaffOnboarding';
 import TcComplaintsView from './telecaller/TcComplaintsView';
 import { Complaint, INITIAL_COMPLAINTS } from '../data/telecallerData';
 import {
@@ -79,6 +80,7 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
     leads:      { title: 'Leads & Assignment',   sub: 'Every lead across the team: find untouched ones and move them to someone with capacity.' },
     followups:  { title: 'Team Follow-ups',      sub: 'Who owes a callback, and who is falling behind.' },
     sales:      { title: 'Team Sales',           sub: 'What the team has sold, by telecaller, product and month.' },
+    onboarding: { title: 'Staff Onboarding',     sub: 'Add telecalling staff and create their Staff ID and temporary password.' },
     complaints: { title: 'Complaints',           sub: 'Customer issues routed to the telecalling team.' },
   };
   const currentMeta = pageMeta[activePage] || pageMeta.overview;
@@ -94,6 +96,7 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
       items: [
         { key: 'leads', label: 'Leads & assignment', count: withInactive },
         { key: 'followups', label: 'Follow-ups', count: overdueCount },
+        { key: 'onboarding', label: 'Staff onboarding' },
       ],
     },
     { label: 'Performance', items: [{ key: 'sales', label: 'Sales' }] },
@@ -253,6 +256,7 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
             <TeamFollowups key={`fu-${focusCaller ?? 'all'}`} data={data} searchQuery={searchQuery} initialCaller={focusCaller} onReassign={handleReassign} onToast={showToast} />
           )}
           {activePage === 'sales' && <TeamSales data={data} onToast={showToast} />}
+          {activePage === 'onboarding' && <StaffOnboarding onToast={showToast} />}
           {activePage === 'complaints' && (
             <TcComplaintsView complaints={complaints} searchQuery={searchQuery} onAdvance={handleAdvanceComplaint} />
           )}
