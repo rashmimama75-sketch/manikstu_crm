@@ -203,7 +203,7 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
                   <span className="dot"></span>
                   {item.label}
                   {'count' in item && item.count !== undefined && item.count > 0 && (
-                    <span className="count">{item.count}</span>
+                    <span className="count" suppressHydrationWarning>{item.count}</span>
                   )}
                 </button>
               ))}

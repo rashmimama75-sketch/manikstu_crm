@@ -179,6 +179,16 @@ function rng(seed: number) {
 const rand = rng(20260924);
 const int = (min: number, max: number) => min + Math.floor(rand() * (max - min + 1));
 const pick = <T,>(arr: readonly T[]) => arr[Math.floor(rand() * arr.length)];
+const pickN = <T,>(arr: readonly T[], count: number): T[] => {
+  const available = arr.slice();
+  const out: T[] = [];
+  for (let i = 0; i < count && available.length > 0; i++) {
+    const idx = Math.floor(rand() * available.length);
+    out.push(available[idx]);
+    available.splice(idx, 1);
+  }
+  return out;
+};
 
 const pad = (n: number) => String(n).padStart(2, '0');
 /** ISO-like local timestamp `daysAgo` days before TODAY (negative = after) at the given hour. */
@@ -477,7 +487,8 @@ const websiteOrders: SalesOrder[] = Array.from({ length: 32 }, (_, i) => {
   const minute = int(0, 59);
   const method: PaymentMethod = pick(['UPI', 'UPI', 'UPI', 'COD', 'COD', 'COD', 'Card', 'Net banking']);
   // Website orders come from the website catalogue (only products with a price can be bought)
-  const products = CATALOG_PRODUCTS.filter(p => p.price !== null).sort(() => rand() - 0.5).slice(0, int(1, 3));
+  const purchasable = CATALOG_PRODUCTS.filter(p => p.price !== null);
+  const products = pickN(purchasable, int(1, 3));
   const items = products.map(p => ({ product_name: p.name, quantity: int(1, 4), price: p.price! }));
   return {
     id: 1000 + i,

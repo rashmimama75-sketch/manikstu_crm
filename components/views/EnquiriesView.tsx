@@ -22,6 +22,7 @@ interface EnquiriesViewProps {
   onConvertToLead: (enquiry: WebEnquiry, verticalId: number, callerId: number) => void;
   onMoveToOnboarding: (enquiry: WebEnquiry) => void;
   onToast: (message: string) => void;
+  initialQuery?: string;
 }
 
 const STATUSES: EnquiryStatus[] = ['new', 'read', 'replied', 'archived'];
@@ -54,12 +55,13 @@ export default function EnquiriesView({
   onConvertToLead,
   onMoveToOnboarding,
   onToast,
+  initialQuery,
 }: EnquiriesViewProps) {
   const [statusFilter, setStatusFilter] = useState<EnquiryStatus | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<EnquiryType | 'all'>('all');
   const [dateRange, setDateRange] = useState<DateRange>('all');
   const [alert, setAlert] = useState<Alert | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
