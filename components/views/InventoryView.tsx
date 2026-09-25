@@ -20,6 +20,8 @@ export default function InventoryView({ inventory, onTriggerReorder }: Inventory
   });
 
   const lowStockCount = inventory.filter(i => i.status === 'Low stock').length;
+  const outOfStockCount = inventory.filter(i => i.status === 'Out of stock').length;
+  const warehouseCount = new Set(inventory.map(i => i.warehouse)).size;
   const totalUnits = inventory.reduce((acc, curr) => acc + curr.stock, 0);
 
   const handleExportCSV = () => {
@@ -48,7 +50,7 @@ export default function InventoryView({ inventory, onTriggerReorder }: Inventory
     <>
       <div className="scoreboard">
         <div className="score">
-          <div className="num">86</div>
+          <div className="num">{inventory.length}</div>
           <div className="label">SKUs Company-Wide</div>
         </div>
         <div className="score">
@@ -56,7 +58,7 @@ export default function InventoryView({ inventory, onTriggerReorder }: Inventory
           <div className="label">Total Units on Hand</div>
         </div>
         <div className="score">
-          <div className="num">4</div>
+          <div className="num">{warehouseCount}</div>
           <div className="label">Regional Warehouses</div>
         </div>
         <div className="score">
@@ -64,7 +66,7 @@ export default function InventoryView({ inventory, onTriggerReorder }: Inventory
           <div className="label">Low Stock Alerts</div>
         </div>
         <div className="score">
-          <div className="num">0</div>
+          <div className="num">{outOfStockCount}</div>
           <div className="label">Out of Stock</div>
         </div>
       </div>

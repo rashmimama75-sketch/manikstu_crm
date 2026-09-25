@@ -11,6 +11,7 @@ interface ProductsViewProps {
   onProductsChange: React.Dispatch<React.SetStateAction<CatalogProduct[]>>;
   orders: SalesOrder[];
   onToast: (message: string) => void;
+  initialQuery?: string;
 }
 
 type StockState = 'in' | 'low' | 'out';
@@ -34,14 +35,14 @@ const listingGaps = (p: CatalogProduct) => {
 
 const telecallerNames = new Set(TRACKER_PRODUCTS.map(p => p.name));
 
-export default function ProductsView({ products, onProductsChange, orders, onToast }: ProductsViewProps) {
+export default function ProductsView({ products, onProductsChange, orders, onToast, initialQuery }: ProductsViewProps) {
   const [view, setView] = useState<'grid' | 'table'>('grid');
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [status, setStatus] = useState<'all' | 'active' | 'hidden'>('all');
   const [stock, setStock] = useState<StockState | 'all'>('all');
   const [featuredOnly, setFeaturedOnly] = useState(false);
   const [alert, setAlert] = useState<Alert | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
   const [imageIdx, setImageIdx] = useState(0);

@@ -5,19 +5,24 @@ interface CustomersViewProps {
   customers: Customer[];
   onSelectCustomer: (cust: Customer) => void;
   onOpenAddCustomerModal: () => void;
+  initialQuery?: string;
 }
 
 export default function CustomersView({
   customers,
   onSelectCustomer,
-  onOpenAddCustomerModal
+  onOpenAddCustomerModal,
+  initialQuery
 }: CustomersViewProps) {
   const [filter, setFilter] = useState<string>('All');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const filters = ['All', 'Active', 'New', 'Inactive'];
 
+  const q = query.trim().toLowerCase();
   const filteredCustomers = customers.filter((c) => {
-    if (filter === 'All') return true;
-    return c.status.toLowerCase() === filter.toLowerCase();
+    if (filter !== 'All' && c.status.toLowerCase() !== filter.toLowerCase()) return false;
+    if (q && ![c.name, c.phone, c.location].some(v => v.toLowerCase().includes(q))) return false;
+    return true;
   });
 
   const getCount = (st: string) => {
@@ -25,23 +30,29 @@ export default function CustomersView({
     return customers.filter((c) => c.status.toLowerCase() === st.toLowerCase()).length;
   };
 
+  const newCount = customers.filter(c => c.status === 'New').length;
+  const repeatBuyers = customers.filter(c => c.ordersCount > 1).length;
+  const totalOrders = customers.reduce((a, c) => a + c.ordersCount, 0);
+  const totalValue = customers.reduce((a, c) => a + c.lifetimeValue, 0);
+  const avgOrderValue = totalOrders === 0 ? 0 : Math.round(totalValue / totalOrders);
+
   return (
     <>
       <div className="scoreboard">
         <div className="score">
-          <div className="num">2,410</div>
+          <div className="num">{customers.length.toLocaleString()}</div>
           <div className="label">Total Farmers</div>
         </div>
         <div className="score">
-          <div className="num">86</div>
+          <div className="num">{newCount}</div>
           <div className="label">New This Month</div>
         </div>
         <div className="score">
-          <div className="num">612</div>
+          <div className="num">{repeatBuyers}</div>
           <div className="label">Repeat Buyers</div>
         </div>
         <div className="score">
-          <div className="num">₹1,240</div>
+          <div className="num">₹{avgOrderValue.toLocaleString()}</div>
           <div className="label">Avg. Order Value</div>
         </div>
       </div>
@@ -63,6 +74,16 @@ export default function CustomersView({
         </button>
       </div>
 
+      <div className="filter-row">
+        <input
+          className="filter-input"
+          type="search"
+          placeholder="Search farmer name, phone, location…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
       <div className="panel">
         <div className="table-wrap">
           <table>
@@ -78,6 +99,13 @@ export default function CustomersView({
               </tr>
             </thead>
             <tbody>
+              {filteredCustomers.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '28px 0' }}>
+                    No farmers match these filters.
+                  </td>
+                </tr>
+              )}
               {filteredCustomers.map((cust) => (
                 <tr key={cust.id}>
                   <td className="cust">

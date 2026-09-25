@@ -71,7 +71,7 @@ export default function Sidebar({ activePage, onSelectPage, counts }: SidebarPro
                 <span className="dot"></span>
                 {item.label}
                 {item.count !== undefined && item.count > 0 && (
-                  <span className="count">{item.count}</span>
+                  <span className="count" suppressHydrationWarning>{item.count}</span>
                 )}
               </button>
             );
