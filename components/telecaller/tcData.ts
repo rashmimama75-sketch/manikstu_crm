@@ -12,42 +12,27 @@ import {
   TrackerSale,
   isWonStage,
 } from '../../data/managerDashboard';
-import { dayStart, daysBefore } from '../../lib/format';
+import { MONTH, dayStart, daysBefore, pct } from '../../lib/format';
 
-/** Props every telecaller page gets: this telecaller's own data and the two main actions. */
-export interface TcSharedProps {
-  me: Telecaller;
-  leads: TrackerLead[];
-  followups: Followup[];
-  activities: LeadActivity[];
-  sales: TrackerSale[];
-  onCall: (lead: TrackerLead, followup?: Followup) => void;
-  onSale: (lead?: TrackerLead) => void;
-}
+// ---- Lookups ------------------------------------------------------------------------------
 
 export const stageOf = (id: number) => STAGES.find(s => s.id === id);
 export const stageName = (id: number) => stageOf(id)?.name ?? '—';
 export const verticalName = (id: number) => VERTICALS.find(v => v.id === id)?.name ?? '—';
-export const productName = (id: number) => TRACKER_PRODUCTS.find(p => p.id === id)?.name ?? '—';
+export const productOf = (id: number) => TRACKER_PRODUCTS.find(p => p.id === id);
+export const productName = (id: number) => productOf(id)?.name ?? '—';
+export const callerOf = (id: number) => TELECALLERS.find(t => t.id === id);
+export const callerName = (id: number) => callerOf(id)?.name ?? '—';
 export const stagesFor = (verticalId: number) =>
   STAGES.filter(s => s.vertical_id === verticalId).sort((a, b) => a.sort_order - b.sort_order);
-export const wonStageFor = (verticalId: number) => stagesFor(verticalId).find(s => isWonStage(s));
 
 export const isOpenLead = (l: TrackerLead) => {
   const s = stageOf(l.stage_id);
   return !isWonStage(s) && s?.name !== 'Lost';
 };
-
-/** The telecaller record matching the signed-in user (falls back to the first telecaller). */
-export const telecallerFor = (name: string) => TELECALLERS.find(t => t.name === name) ?? TELECALLERS[0];
+export const isWonLead = (l: TrackerLead) => isWonStage(stageOf(l.stage_id));
 
 export const OUTCOMES: CallOutcome[] = ['Connected', 'No answer', 'Busy', 'Wrong number'];
-export const OUTCOME_COLORS: Record<CallOutcome, string> = {
-  Connected: 'var(--leaf)',
-  'No answer': 'var(--gold)',
-  Busy: 'var(--rust)',
-  'Wrong number': 'var(--ink-soft)',
-};
 
 export const time12 = (ts: string) => {
   const [h, m] = ts.slice(11, 16).split(':').map(Number);
@@ -60,56 +45,106 @@ export const lastCallFor = (leadId: number, activities: LeadActivity[]) => {
   return undefined;
 };
 
-export type QueueReason = 'Overdue follow-up' | 'Follow-up today' | 'New lead' | 'Quiet 3+ days';
-export const QUEUE_CHIP: Record<QueueReason, string> = {
-  'Overdue follow-up': 'pending',
-  'Follow-up today': 'transit',
-  'New lead': 'confirmed',
-  'Quiet 3+ days': 'muted',
-};
+// ---- Periods ------------------------------------------------------------------------------
 
-export interface QueueItem {
-  lead: TrackerLead;
-  reason: QueueReason;
-  followup?: Followup;
-  lastCall?: LeadActivity;
+export type Period = 'today' | '7d' | 'month';
+export const PERIOD_LABEL: Record<Period, string> = { today: 'Today', '7d': 'Last 7 days', month: 'This month' };
+export const inPeriod = (ts: string, period: Period) =>
+  period === 'today' ? ts.startsWith(TODAY) : period === '7d' ? daysBefore(ts) <= 6 : ts.startsWith(MONTH);
+
+export const isOverdue = (f: Followup) =>
+  f.status === 'missed' || (f.status === 'pending' && dayStart(f.due_at) < dayStart(TODAY));
+
+// ---- Team data ----------------------------------------------------------------------------
+
+/** Everything the head's pages work from. Leads and follow-ups change when leads are reassigned. */
+export interface TeamData {
+  leads: TrackerLead[];
+  followups: Followup[];
+  activities: LeadActivity[];
+  sales: TrackerSale[];
 }
 
-/**
- * Who to call next, in priority order: overdue follow-ups, follow-ups due today,
- * new leads never called, then open leads nobody has touched for 3+ days.
- */
-export function buildQueue(leads: TrackerLead[], followups: Followup[], activities: LeadActivity[]): QueueItem[] {
-  const byId = new Map(leads.map(l => [l.id, l]));
-  const seen = new Set<number>();
-  const items: QueueItem[] = [];
-  const add = (lead: TrackerLead | undefined, reason: QueueReason, followup?: Followup) => {
-    if (!lead || seen.has(lead.id)) return;
-    seen.add(lead.id);
-    items.push({ lead, reason, followup, lastCall: lastCallFor(lead.id, activities) });
-  };
+export interface StaffStats {
+  t: Telecaller;
+  calls: number;
+  connected: number;
+  connectRate: number;
+  openLeads: number;
+  staleLeads: number;
+  pendingFollowups: number;
+  overdueFollowups: number;
+  sales: number;
+  revenue: number;
+  conversion: number;
+  callsToday: number;
+  lastCall?: string;
+}
 
-  const today = dayStart(TODAY);
-  const overdue = followups
-    .filter(f => f.status === 'missed' || (f.status === 'pending' && dayStart(f.due_at) < today))
-    .sort((a, b) => a.due_at.localeCompare(b.due_at));
-  overdue.forEach(f => add(byId.get(f.lead_id), 'Overdue follow-up', f));
+/** Per-telecaller numbers for the chosen period (and optional vertical). */
+export function staffStats(data: TeamData, period: Period, verticalId: number | 'all'): StaffStats[] {
+  const productInVertical = (id: number) => verticalId === 'all' || productOf(id)?.vertical_id === verticalId;
+  const leadInVertical = (l: TrackerLead) => verticalId === 'all' || l.vertical_id === verticalId;
+  const leadVertical = new Map(data.leads.map(l => [l.id, l.vertical_id]));
+  const activityInVertical = (a: LeadActivity) => verticalId === 'all' || leadVertical.get(a.lead_id) === verticalId;
+  const soldLeadIds = new Set(data.sales.map(s => s.lead_id));
 
-  followups
-    .filter(f => f.status === 'pending' && f.due_at.startsWith(TODAY))
-    .sort((a, b) => a.due_at.localeCompare(b.due_at))
-    .forEach(f => add(byId.get(f.lead_id), 'Follow-up today', f));
+  return TELECALLERS.map(t => {
+    const mine = data.leads.filter(l => l.assigned_to === t.id && leadInVertical(l));
+    const myLeadIds = new Set(mine.map(l => l.id));
+    const acts = data.activities.filter(a => a.caller_id === t.id && activityInVertical(a));
+    const periodActs = acts.filter(a => inPeriod(a.created_at, period));
+    const connected = periodActs.filter(a => a.outcome === 'Connected').length;
+    const fus = data.followups.filter(f => f.caller_id === t.id && myLeadIds.has(f.lead_id));
+    const sales = data.sales.filter(s => s.caller_id === t.id && inPeriod(s.sold_at, period) && productInVertical(s.product_id));
+    return {
+      t,
+      calls: periodActs.length,
+      connected,
+      connectRate: pct(connected, periodActs.length),
+      openLeads: mine.filter(isOpenLead).length,
+      staleLeads: mine.filter(l => isOpenLead(l) && daysBefore(l.updated_at) >= 3).length,
+      pendingFollowups: fus.filter(f => f.status === 'pending').length,
+      overdueFollowups: fus.filter(isOverdue).length,
+      sales: sales.length,
+      revenue: sales.reduce((a, s) => a + s.amount, 0),
+      conversion: pct(mine.filter(l => soldLeadIds.has(l.id)).length, mine.length),
+      callsToday: acts.filter(a => a.created_at.startsWith(TODAY)).length,
+      lastCall: acts[acts.length - 1]?.created_at,
+    };
+  });
+}
 
-  const calledIds = new Set(activities.map(a => a.lead_id));
-  leads
-    .filter(l => isOpenLead(l) && !calledIds.has(l.id))
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .forEach(l => add(l, 'New lead'));
+export interface TeamAlert {
+  key: string;
+  level: 'critical' | 'warning';
+  text: string;
+  callerId?: number;
+}
 
-  leads
-    .filter(l => isOpenLead(l) && daysBefore(l.updated_at) >= 3)
-    .sort((a, b) => a.updated_at.localeCompare(b.updated_at))
-    .forEach(l => add(l, 'Quiet 3+ days'));
+/** Things the head should act on today, most serious first. */
+export function teamAlerts(stats: StaffStats[]): TeamAlert[] {
+  const alerts: TeamAlert[] = [];
+  stats.filter(s => !s.t.is_active && s.openLeads > 0).forEach(s =>
+    alerts.push({ key: `inactive-${s.t.id}`, level: 'critical', callerId: s.t.id, text: `${s.t.name} is inactive but still holds ${s.openLeads} open leads` }));
+  stats.filter(s => s.t.is_active && s.callsToday === 0).forEach(s =>
+    alerts.push({ key: `nocalls-${s.t.id}`, level: 'critical', callerId: s.t.id, text: `${s.t.name} has made no calls today` }));
+  stats.filter(s => s.t.is_active && s.overdueFollowups >= 2).forEach(s =>
+    alerts.push({ key: `overdue-${s.t.id}`, level: 'warning', callerId: s.t.id, text: `${s.t.name} has ${s.overdueFollowups} overdue follow-ups` }));
+  const stale = stats.filter(s => s.t.is_active).reduce((a, s) => a + s.staleLeads, 0);
+  if (stale > 0) alerts.push({ key: 'stale', level: 'warning', text: `${stale} open leads haven't been touched for 3+ days` });
+  return alerts;
+}
 
-  return items;
+/** Six calendar months ending this month, with total sales in each. */
+export function salesByMonth(sales: TrackerSale[]) {
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const start = new Date(`${TODAY.slice(0, 8)}01T00:00:00`);
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(start);
+    d.setMonth(d.getMonth() - (5 - i));
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const rows = sales.filter(s => s.sold_at.startsWith(key));
+    return { key, label: names[d.getMonth()], amount: rows.reduce((a, s) => a + s.amount, 0), count: rows.length };
+  });
 }

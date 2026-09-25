@@ -7,7 +7,8 @@ import { CATALOG_PRODUCTS } from './catalogProducts';
 
 export const TODAY = '2026-09-24';
 
-export interface Telecaller { id: number; name: string }
+/** A telecalling staff member (`users` with role telecaller: name, region, is_active). */
+export interface Telecaller { id: number; name: string; region: string; is_active: boolean }
 export interface Vertical { id: number; name: string; slug: string; is_active: boolean }
 export interface Stage { id: number; vertical_id: number; name: string; sort_order: number }
 export interface TrackerProduct { id: number; vertical_id: number; name: string; price: number }
@@ -116,11 +117,13 @@ export interface WebEnquiry {
 }
 
 export const TELECALLERS: Telecaller[] = [
-  { id: 11, name: 'Ananya Mishra' },
-  { id: 12, name: 'Bikash Pradhan' },
-  { id: 13, name: 'Rashmita Sahu' },
-  { id: 14, name: 'Deepak Behera' },
-  { id: 15, name: 'Sonali Das' },
+  { id: 11, name: 'Ananya Mishra', region: 'Bhubaneswar', is_active: true },
+  { id: 12, name: 'Bikash Pradhan', region: 'Cuttack', is_active: true },
+  { id: 13, name: 'Rashmita Sahu', region: 'Berhampur', is_active: true },
+  { id: 14, name: 'Deepak Behera', region: 'Balasore', is_active: true },
+  { id: 15, name: 'Sonali Das', region: 'Sambalpur', is_active: true },
+  // Left about two weeks ago; their leads still need reassigning.
+  { id: 16, name: 'Manas Rout', region: 'Koraput', is_active: false },
 ];
 
 export const VERTICALS: Vertical[] = [
@@ -243,10 +246,15 @@ for (let id = 1; id <= 150; id++) {
   // Weight towards early stages, like a real funnel.
   const stageIdx = fresh ? 0 : Math.min(stages.length - 1, Math.floor(Math.pow(rand(), 1.6) * stages.length));
   const stage = stages[stageIdx];
-  const caller = fresh ? TELECALLERS[(id - 1) % TELECALLERS.length].id : pick(TELECALLERS).id;
-  const createdDaysAgo = fresh ? 0 : int(0, 34);
+  const active = TELECALLERS.filter(t => t.is_active);
+  // Fresh leads only go to active staff; older ones may sit with the inactive telecaller.
+  const caller = fresh ? active[(id - 1) % active.length].id : pick(TELECALLERS).id;
+  const callerActive = TELECALLERS.find(t => t.id === caller)!.is_active;
+  // The inactive telecaller only has leads from before they left.
+  const createdDaysAgo = fresh ? 0 : callerActive ? int(0, 34) : int(12, 34);
   // Most leads were touched in the last few days; a few have gone quiet.
-  const lastTouch = Math.min(createdDaysAgo, rand() < 0.85 ? int(0, 2) : int(3, 12));
+  // Leads of the inactive telecaller haven't been touched since they left (~12+ days ago).
+  const lastTouch = Math.min(createdDaysAgo, !callerActive ? int(12, 20) : rand() < 0.85 ? int(0, 2) : int(3, 12));
 
   TRACKER_LEADS.push({
     id,
@@ -304,7 +312,8 @@ for (let id = 1; id <= 150; id++) {
         customer_name: TRACKER_LEADS[id - 1].customer_name,
         quantity,
         amount: product.price * quantity,
-        sold_at: at(lastTouch).slice(0, 10),
+        // The idle telecaller made no calls today, so they can't have sold anything today either.
+        sold_at: at(caller === IDLE_TODAY && lastTouch === 0 ? 1 : lastTouch).slice(0, 10),
       });
     }
   }
@@ -319,6 +328,7 @@ for (let id = 1; id <= 150; id++) {
     date.setDate(date.getDate() - d);
     if (date.getDay() === 0) continue; // Sundays off
     for (const t of TELECALLERS) {
+      if (!t.is_active && d < 12) continue; // left ~12 days ago
       if (d === 0 && t.id === IDLE_TODAY) continue;
       const eligible = TRACKER_LEADS.filter(l => {
         const w = leadWindow.get(l.id)!;
@@ -336,19 +346,28 @@ for (let id = 1; id <= 150; id++) {
   LEAD_ACTIVITIES.forEach((a, i) => { a.id = i + 1; });
 }
 
+const ACTIVE_TELECALLERS = TELECALLERS.filter(t => t.is_active);
+
+/** A random day in the last 30 plus someone who could have sold on it (the idle telecaller made no sales today). */
+function recentSaleSlot() {
+  const day = int(0, 29);
+  const pool = day === 0 ? ACTIVE_TELECALLERS.filter(t => t.id !== IDLE_TODAY) : ACTIVE_TELECALLERS;
+  return { caller_id: pick(pool).id, sold_at: at(day).slice(0, 10) };
+}
+
 // Repeat orders from existing customers (no lead attached), spread over the last 30 days.
 for (let i = 0; i < 70; i++) {
   const product = pick(TRACKER_PRODUCTS.filter(p => p.vertical_id === 1));
   const quantity = int(1, 10);
+  const slot = recentSaleSlot();
   TRACKER_SALES.push({
     id: TRACKER_SALES.length + 1,
     lead_id: null,
     product_id: product.id,
-    caller_id: pick(TELECALLERS).id,
+    ...slot,
     customer_name: `${pick(FIRST)} ${pick(LAST)}`,
     quantity,
     amount: product.price * quantity,
-    sold_at: at(int(0, 29)).slice(0, 10),
   });
 }
 
@@ -356,16 +375,48 @@ for (let i = 0; i < 70; i++) {
 const insurance = TRACKER_PRODUCTS.find(p => p.id === 8)!;
 for (let i = 0; i < 12; i++) {
   const quantity = int(1, 6); // goats covered
+  const slot = recentSaleSlot();
   TRACKER_SALES.push({
     id: TRACKER_SALES.length + 1,
     lead_id: null,
     product_id: insurance.id,
-    caller_id: pick(TELECALLERS).id,
+    ...slot,
     customer_name: `${pick(FIRST)} ${pick(LAST)}`,
     quantity,
     amount: insurance.price * quantity,
-    sold_at: at(int(0, 29)).slice(0, 10),
   });
+}
+
+// Sales history for the five months before this one, so month-on-month charts have data.
+// (Not turned into orders: the Orders page only covers recent weeks.)
+{
+  const monthStart = new Date(`${TODAY.slice(0, 8)}01T00:00:00`);
+  for (let back = 1; back <= 5; back++) {
+    const first = new Date(monthStart);
+    first.setMonth(first.getMonth() - back);
+    const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const daysAgoFirst = Math.round((new Date(`${TODAY}T00:00:00`).getTime() - first.getTime()) / 86_400_000);
+    for (const t of TELECALLERS) {
+      // The inactive telecaller left this month, so they have history in earlier months.
+      for (let k = int(14, 30); k > 0; k--) {
+        // Older than 35 days only: the last few weeks already have their own sales above.
+        const daysAgo = daysAgoFirst - int(0, daysInMonth - 1);
+        if (daysAgo < 36) continue;
+        const product = pick(TRACKER_PRODUCTS.filter(p => p.vertical_id !== 3 || rand() < 0.1));
+        const quantity = product.vertical_id === 1 ? int(1, 10) : 1;
+        TRACKER_SALES.push({
+          id: TRACKER_SALES.length + 1,
+          lead_id: null,
+          product_id: product.id,
+          caller_id: t.id,
+          customer_name: `${pick(FIRST)} ${pick(LAST)}`,
+          quantity,
+          amount: product.price * quantity,
+          sold_at: at(daysAgo).slice(0, 10),
+        });
+      }
+    }
+  }
 }
 
 // ---- Orders: website orders plus telecaller sales of physical products --------------------
@@ -445,7 +496,7 @@ const websiteOrders: SalesOrder[] = Array.from({ length: 32 }, (_, i) => {
 });
 
 const telecallerOrders: SalesOrder[] = TRACKER_SALES
-  .filter(s => physicalProducts.some(p => p.id === s.product_id))
+  .filter(s => physicalProducts.some(p => p.id === s.product_id) && daysBeforeToday(s.sold_at) <= 35)
   .map(s => {
     const product = physicalProducts.find(p => p.id === s.product_id)!;
     const age = daysBeforeToday(s.sold_at);
