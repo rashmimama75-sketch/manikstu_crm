@@ -11,8 +11,12 @@ import TeamLeads from './telecaller/TeamLeads';
 import TeamFollowups from './telecaller/TeamFollowups';
 import TeamSales from './telecaller/TeamSales';
 import StaffOnboarding from './telecaller/StaffOnboarding';
-import TcComplaintsView from './telecaller/TcComplaintsView';
-import { Complaint, INITIAL_COMPLAINTS } from '../data/telecallerData';
+import TeamComplaints from './telecaller/TeamComplaints';
+import TeamOrders from './telecaller/TeamOrders';
+import TeamInventory from './telecaller/TeamInventory';
+import { trackingFor } from './telecaller/orderTracking';
+import { Complaint, INITIAL_COMPLAINTS } from '../data/complaints';
+import { isUnassigned } from './telecaller/complaintsUtil';
 import {
   FOLLOWUPS,
   LEAD_ACTIVITIES,
@@ -81,13 +85,16 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
     followups:  { title: 'Team Follow-ups',      sub: 'Who owes a callback, and who is falling behind.' },
     sales:      { title: 'Team Sales',           sub: 'What the team has sold, by telecaller, product and month.' },
     onboarding: { title: 'Staff Onboarding',     sub: 'Add telecalling staff and create their Staff ID and temporary password.' },
-    complaints: { title: 'Complaints',           sub: 'Customer issues routed to the telecalling team.' },
+    inventory:  { title: 'Stock',                sub: 'What the team can sell today, what is running out and which customers are waiting.' },
+    orders:     { title: 'Orders & Tracking',    sub: 'What each customer bought and where the parcel is: packed, shipped, out for delivery, delivered.' },
+    complaints: { title: 'Complaints',           sub: 'Assign each customer complaint to the right telecaller and see it through to resolution.' },
   };
   const currentMeta = pageMeta[activePage] || pageMeta.overview;
 
   const overdueCount = followups.filter(isOverdue).length;
   const withInactive = todayStats.filter(s => !s.t.is_active).reduce((a, s) => a + s.openLeads, 0);
-  const openComplaints = complaints.filter(c => c.status !== 'Resolved').length;
+  const lateOrders = useMemo(() => SALES_ORDERS.filter(o => trackingFor(o).delayed).length, []);
+  const toAssign = complaints.filter(isUnassigned).length;
 
   const navGroups = [
     { label: 'Overview', items: [{ key: 'overview', label: 'Team overview', count: alerts.filter(a => a.level === 'critical').length }] },
@@ -100,7 +107,14 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
       ],
     },
     { label: 'Performance', items: [{ key: 'sales', label: 'Sales' }] },
-    { label: 'Support', items: [{ key: 'complaints', label: 'Complaints', count: openComplaints }] },
+    {
+      label: 'Inventory',
+      items: [
+        { key: 'inventory', label: 'Stock' },
+        { key: 'orders', label: 'Orders & tracking', count: lateOrders },
+      ],
+    },
+    { label: 'Support', items: [{ key: 'complaints', label: 'Complaints', count: toAssign }] },
   ];
 
   const handleNavigate = (page: string, callerId?: number) => {
@@ -134,11 +148,6 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
     });
     const people = new Set(newLeads.map(l => l.assigned_to)).size;
     showToast(`${newLeads.length} lead${newLeads.length === 1 ? '' : 's'} imported and assigned to ${people} telecaller${people === 1 ? '' : 's'}`);
-  };
-
-  const handleAdvanceComplaint =(id: string, next: Complaint['status']) => {
-    setComplaints(prev => prev.map(c => (c.id === id ? { ...c, status: next } : c)));
-    showToast(`${id} marked ${next.toLowerCase()}`);
   };
 
   return (
@@ -213,11 +222,11 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
                 <Search size={16} style={{ color: 'var(--ink-soft)' }} />
                 <input
                   type="text"
-                  placeholder="Search leads by name or phone…"
+                  placeholder={activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'orders' ? 'Search orders by name, phone, order no., AWB…' : 'Search leads by name or phone…'}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
-                    if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints') {
+                    if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'inventory') {
                       setActivePage('leads');
                       setFocusCaller(undefined);
                     }
@@ -257,8 +266,10 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
           )}
           {activePage === 'sales' && <TeamSales data={data} onToast={showToast} />}
           {activePage === 'onboarding' && <StaffOnboarding onToast={showToast} />}
+          {activePage === 'inventory' && <TeamInventory orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
+          {activePage === 'orders' && <TeamOrders orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'complaints' && (
-            <TcComplaintsView complaints={complaints} searchQuery={searchQuery} onAdvance={handleAdvanceComplaint} />
+            <TeamComplaints complaints={complaints} onComplaintsChange={setComplaints} headName={user.name} searchQuery={searchQuery} onToast={showToast} />
           )}
         </main>
       </div>
