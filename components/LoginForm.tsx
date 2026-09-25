@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 const DEMO_ACCOUNTS = [
   { label: 'Manager', email: 'smurti@manikstu.in', password: 'manager123' },
   { label: 'Telecaller', email: 'ananya@manikstu.in', password: 'telecaller123' },
+  { label: 'Calling executive', email: 'bikash@manikstu.in', password: 'executive123' },
 ];
 
 export default function LoginForm({ showDemoAccounts }: { showDemoAccounts: boolean }) {

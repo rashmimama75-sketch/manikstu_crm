@@ -1,7 +1,7 @@
 // Signed session cookie. Uses Web Crypto only, so it runs in both the
 // Edge middleware and Node route handlers.
 
-export type Role = 'manager' | 'telecaller';
+export type Role = 'manager' | 'telecaller' | 'calling-executive';
 
 export interface SessionUser {
   id: string;
@@ -21,6 +21,7 @@ export const SESSION_MAX_AGE = 60 * 60 * 8; // one 8-hour shift
 export const ROLE_HOME: Record<Role, string> = {
   manager: '/manager',
   telecaller: '/telecaller',
+  'calling-executive': '/calling-executive',
 };
 
 const DEV_SECRET = 'dev-only-insecure-secret-change-me';
@@ -76,7 +77,7 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
     if (!valid) return null;
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(body))) as SessionPayload;
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
-    if (payload.role !== 'manager' && payload.role !== 'telecaller') return null;
+    if (!Object.prototype.hasOwnProperty.call(ROLE_HOME, payload.role)) return null;
     const { exp, ...user } = payload;
     return user;
   } catch {

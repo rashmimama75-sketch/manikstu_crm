@@ -29,6 +29,16 @@ const USERS: UserRecord[] = [
     // telecaller123
     passwordHash: 'f715cb64b374a5f7e4ccba7db216329b:815b389ee853fa0520f6f24f51f52257c8e603873ccd5ede2f01139b330d3b9f',
   },
+  {
+    id: 'u-ce-212',
+    email: 'bikash@manikstu.in',
+    name: 'Bikash Pradhan',
+    initials: 'BP',
+    role: 'calling-executive',
+    staffId: 'MK-CE-212',
+    // executive123
+    passwordHash: '96183426ca84d4bb62fb14fe7018b892:5f1bb04d9d96627a4625014f1c179396d7a10f118098256a0da2418598fe9daa',
+  },
 ];
 
 function passwordMatches(password: string, stored: string): boolean {
