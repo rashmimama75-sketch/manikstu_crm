@@ -1150,8 +1150,36 @@ td .chip { text-transform: capitalize; }
 a.btn-primary { display: inline-block; text-decoration: none; }
 .order-drawer .chip { text-transform: capitalize; }
 
+/* Staff onboarding */
+.onboard-steps { list-style: none; display: grid; gap: 3px; font-size: 12px; }
+.onboard-steps li { display: flex; align-items: center; gap: 5px; }
+.onboard-steps li.ok { color: var(--leaf); }
+.onboard-steps li.missing { color: var(--ink-soft); }
+.step-toggle { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.step-toggle:hover { text-decoration: underline; }
+.staff-actions .kanban-btn { display: inline-flex; align-items: center; gap: 4px; }
+.kanban-btn.danger-text { color: var(--rust); }
+.staff-table td { vertical-align: top; }
+.empty-onboarding { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 30px 10px; color: var(--leaf); text-align: center; }
+.review-table { width: 100%; margin-bottom: 16px; }
+.review-table td { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.review-table td:first-child { color: var(--ink-soft); width: 42%; }
+.review-table td:last-child { font-weight: 600; }
+.cred-card { display: grid; gap: 14px; }
+.cred-warning { background: var(--gold-light); border: 1px solid var(--gold); border-radius: 8px; padding: 10px 12px; font-size: 13px; color: var(--ink); }
+[data-theme="dark"] .cred-warning { background: rgba(196, 149, 42, 0.18); }
+.cred-grid { display: grid; gap: 12px; background: var(--page-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.cred-value { font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: 20px; font-weight: 700; letter-spacing: 0.5px; color: var(--ink); word-break: break-all; }
+.cred-value.small { font-family: inherit; font-size: 15px; letter-spacing: 0; }
+.cred-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cred-actions .btn-secondary { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.whatsapp-btn { color: #25733A; }
+code { font-size: 11.5px; background: var(--line); border-radius: 4px; padding: 1px 5px; }
+
 /* Lead import */
-.modal-container.wide { max-width: 920px; max-height: calc(100vh - 40px); overflow-y: auto; }
+.modal-container { max-height: calc(100vh - 40px); overflow-y: auto; overflow-x: hidden; }
+.modal-container .inline-edit input { min-width: 0; }
+.modal-container.wide { max-width: 920px; }
 .btn-primary { display: inline-flex; align-items: center; gap: 6px; justify-content: center; }
 .drop-zone {
   border: 2px dashed var(--line);
