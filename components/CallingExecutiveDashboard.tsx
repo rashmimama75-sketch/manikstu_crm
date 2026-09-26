@@ -9,6 +9,7 @@ import CallDeskView, { CallForm } from './calling-executive/CallDeskView';
 import CallHistoryView from './calling-executive/CallHistoryView';
 import CallbacksView from './calling-executive/CallbacksView';
 import CeReportsView from './calling-executive/CeReportsView';
+import CallModal, { CallTarget, dial } from './calling-executive/CallModal';
 import {
   FOLLOWUPS,
   LEAD_ACTIVITIES,
@@ -110,11 +111,14 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
     setCallEndedAt(null);
   };
 
-  const handleSave = (outcome: CallOutcome) => {
-    if (!current) return;
-    const { lead, followup } = current;
+  /** Records a call: activity, lead stage, follow-ups, and takes the lead out of the queue. */
+  const logCall = (
+    { lead, followup }: CallTarget,
+    outcome: CallOutcome,
+    form: CallForm,
+    durationSec: number | null,
+  ) => {
     const stamp = nowStamp();
-    const durationSec = outcome === 'Connected' && callStartedAt !== null ? elapsedSec : null;
 
     setActivities(prev => [...prev, {
       id: Math.max(0, ...prev.map(a => a.id)) + 1,
@@ -149,11 +153,33 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
 
     setHandled(prev => [...prev, lead.id]);
     setSkipped(prev => prev.filter(id => id !== lead.id));
-    setSelectedLeadId(null);
-    resetTimer();
 
     const stageChanged = form.stageId !== lead.stage_id;
     showToast(`${lead.customer_name}: ${outcome}${stageChanged ? ` · moved to ${stageOf(form.stageId)?.name}` : ''}${form.scheduleNext ? ' · callback booked' : ''}`);
+  };
+
+  // Call dashboard: save the call on the desk and move to the next lead.
+  const handleSave = (outcome: CallOutcome) => {
+    if (!current) return;
+    logCall(current, outcome, form, outcome === 'Connected' && callStartedAt !== null ? elapsedSec : null);
+    setSelectedLeadId(null);
+    resetTimer();
+  };
+
+  // Call desk page: the Call button dials straight away and opens the calling window there.
+  const [callTarget, setCallTarget] = useState<CallTarget | null>(null);
+  const startCallFromDesk = (leadId: number) => {
+    if (callLive) {
+      showToast('Finish the call on the Call dashboard first');
+      return;
+    }
+    const lead = myLeads.find(l => l.id === leadId);
+    if (!lead) return;
+    const followup =
+      queue.find(q => q.lead.id === leadId)?.followup ??
+      myFollowups.filter(f => f.lead_id === leadId && f.status !== 'done').sort((a, b) => a.due_at.localeCompare(b.due_at))[0];
+    dial(lead.phone);
+    setCallTarget({ lead, followup });
   };
 
   const handleSkip = () => {
@@ -166,18 +192,6 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
   const selectLead = (leadId: number) => {
     setSelectedLeadId(leadId);
     resetTimer();
-  };
-
-  const openOnDesk = (leadId: number) => {
-    if (callLive) {
-      showToast('Finish the current call first');
-      return;
-    }
-    // Pull a lead back into the queue if it was already handled this session.
-    setHandled(prev => prev.filter(id => id !== leadId));
-    selectLead(leadId);
-    setActivePage('desk');
-    window.scrollTo(0, 0);
   };
 
   const leadHistory = useMemo(() => {
@@ -323,7 +337,7 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
           )}
           {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
           {activePage === 'callbacks' && (
-            <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} searchQuery={searchQuery} onOpen={openOnDesk} />
+            <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} searchQuery={searchQuery} onOpen={startCallFromDesk} />
           )}
           {activePage === 'reports' && (
             <CeReportsView
@@ -342,6 +356,10 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
         <div>© 2026 Manikstu Agri Network · Odisha</div>
       </footer>
       <FooterFrieze />
+
+      {callTarget && (
+        <CallModal key={callTarget.lead.id} target={callTarget} onClose={() => setCallTarget(null)} />
+      )}
     </div>
   );
 }
