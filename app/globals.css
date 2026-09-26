@@ -1953,3 +1953,11 @@ button.score-btn:last-child { border-right: none; }
 .legend-dot.available { background: var(--leaf); }
 .panel-head .link-btn { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; color: var(--leaf); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .toolbar-actions .filter-select { min-width: 140px; }
+
+/* Orders & tracking: order number on one line, date under it; eye button */
+.order-cell { white-space: nowrap; }
+.order-cell .order-no { display: block; }
+.order-cell .loc { display: block; margin-top: 2px; }
+.track-action { width: 44px; text-align: right; }
+.eye-btn { width: 32px; height: 32px; margin-left: auto; color: var(--leaf); cursor: pointer; }
+.eye-btn:hover { background: var(--leaf); color: var(--white); border-color: var(--leaf); }

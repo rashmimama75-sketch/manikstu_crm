@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Copy, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Copy, Eye, X } from 'lucide-react';
 import { SalesOrder, TELECALLERS, TODAY } from '../../data/managerDashboard';
 import { Complaint } from '../../data/complaints';
 import { daysBefore, nowStamp, rupees, shortDate, shortDateTime } from '../../lib/format';
@@ -58,6 +58,8 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
   const [product, setProduct] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
+  /** Opened with the eye button: scroll straight to the delivery tracking. */
+  const [focusTracking, setFocusTracking] = useState(false);
 
   const products = useMemo(() => Array.from(new Set(orders.flatMap(o => o.items.map(i => i.product_name)))).sort(), [orders]);
 
@@ -182,13 +184,16 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
         <div className="table-wrap">
           <table className="orders-table">
             <thead>
-              <tr><th>Order</th><th>Customer</th><th>Products</th><th>Sold by</th><th className="num-col">Amount</th><th>Tracking</th><th>Courier</th></tr>
+              <tr><th>Order</th><th>Customer</th><th>Products</th><th>Sold by</th><th className="num-col">Amount</th><th>Tracking</th><th>Courier</th><th aria-label="Track"></th></tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <EmptyRow cols={7} text="No orders here." />}
+              {rows.length === 0 && <EmptyRow cols={8} text="No orders here." />}
               {rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE).map(({ o, t }) => (
-                <tr key={o.id} className="clickable" onClick={() => setOpenId(o.id)}>
-                  <td className="order-no">{o.order_number}<div className="loc">{shortDate(o.created_at)}</div></td>
+                <tr key={o.id} className="clickable" onClick={() => { setOpenId(o.id); setFocusTracking(false); }}>
+                  <td className="order-cell">
+                    <div className="order-no">{o.order_number}</div>
+                    <div className="loc">{shortDate(o.created_at)}</div>
+                  </td>
                   <td className="cust">{o.customer_name}<div className="loc">{o.city} · {o.phone}</div></td>
                   <td>
                     {o.items[0].product_name} × {o.items[0].quantity}
@@ -204,6 +209,16 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
                     </div>
                   </td>
                   <td>{t.courier ? <>{t.courier}<div className="loc">{t.awb}</div></> : <span className="loc">—</span>}</td>
+                  <td className="track-action">
+                    <button
+                      className="icon-btn eye-btn"
+                      title="Track delivery status"
+                      aria-label={`Track delivery of ${o.order_number}`}
+                      onClick={e => { e.stopPropagation(); setOpenId(o.id); setFocusTracking(true); }}
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -224,6 +239,7 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
           order={opened.o}
           tracking={opened.t}
           complaints={complaints.filter(c => c.order_number === opened.o.order_number)}
+          focusTracking={focusTracking}
           onClose={() => setOpenId(null)}
           onToast={onToast}
         />
@@ -232,14 +248,19 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
   );
 }
 
-function OrderTrackDrawer({ order: o, tracking: t, complaints, onClose, onToast }: {
+function OrderTrackDrawer({ order: o, tracking: t, complaints, focusTracking, onClose, onToast }: {
   order: SalesOrder;
   tracking: Tracking;
   complaints: Complaint[];
+  focusTracking: boolean;
   onClose: () => void;
   onToast: (m: string) => void;
 }) {
   const reached = stageIndex(t.stage);
+  const trackRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (focusTracking) trackRef.current?.scrollIntoView({ block: 'start' });
+  }, [focusTracking, o.id]);
   const copyUpdate = async () => {
     try {
       await navigator.clipboard.writeText(customerUpdate(o, t));
@@ -293,8 +314,8 @@ function OrderTrackDrawer({ order: o, tracking: t, complaints, onClose, onToast 
           </section>
 
           {t.stage !== 'cancelled' && (
-            <section className="od-section">
-              <div className="od-label">Shipment</div>
+            <section className="od-section" ref={trackRef}>
+              <div className="od-label">Delivery tracking</div>
               <div className="od-row">
                 <div><div className="loc">Courier</div>{t.courier ?? 'Not shipped yet'}{t.awb && <div className="loc">AWB {t.awb}</div>}</div>
                 <div>
@@ -317,7 +338,7 @@ function OrderTrackDrawer({ order: o, tracking: t, complaints, onClose, onToast 
             </section>
           )}
 
-          <section className="od-section">
+          <section className="od-section" ref={t.stage === 'cancelled' ? trackRef : undefined}>
             <div className="od-label">Tracking history</div>
             <ul className="track-timeline">
               {[...t.events].reverse().map((e, i) => (
