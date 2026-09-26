@@ -42,7 +42,8 @@ export type TrackerAction =
   | { type: 'add-lead'; lead: NewLeadInput }
   | { type: 'assign'; leadIds: number[]; callerId: number }
   | { type: 'log-call'; call: CallInput }
-  | { type: 'import-report'; calls: CallInput[] };
+  | { type: 'import-report'; calls: CallInput[] }
+  | { type: 'complete-followup'; followupId: number };
 
 export type ActorRole = 'manager' | 'telecaller' | 'calling-executive';
 export interface Actor {
@@ -59,6 +60,7 @@ export const ALLOWED: Record<TrackerAction['type'], ActorRole[]> = {
   assign: ['telecaller', 'manager'],
   'log-call': ['calling-executive'],
   'import-report': ['calling-executive'],
+  'complete-followup': ['calling-executive'],
 };
 
 export const OUTCOME_LIST: CallOutcome[] = ['Connected', 'No answer', 'Busy', 'Wrong number'];
@@ -210,6 +212,14 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
       const ordered = [...action.calls].sort((a, b) => (a.calledAt || now).localeCompare(b.calledAt || now));
       ordered.forEach(c => applyCall(state, c, actor));
       return { state, message: `${ordered.length} call${ordered.length === 1 ? '' : 's'} imported from the report` };
+    }
+    case 'complete-followup': {
+      const f = state.followups.find(x => x.id === Number(action.followupId));
+      const lead = f && state.leads.find(l => l.id === f.lead_id);
+      if (!f || !lead) throw new TrackerError('That follow-up no longer exists.');
+      if (lead.assigned_to !== actor.callerId) throw new TrackerError(`${lead.customer_name} is not assigned to you any more.`);
+      if (f.status !== 'done') { f.status = 'done'; f.completed_at = stamp(); }
+      return { state, message: `Follow-up done: ${lead.customer_name}` };
     }
     default:
       throw new TrackerError('Unknown change.');

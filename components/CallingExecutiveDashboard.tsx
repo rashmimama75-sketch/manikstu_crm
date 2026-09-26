@@ -159,10 +159,13 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     setCallTarget({ lead, followup });
   };
 
-  const completeFollowup = (followupId: number) => {
-    const f = myFollowups.find(x => x.id === followupId);
-    setFollowups(prev => prev.map(x => (x.id === followupId ? { ...x, status: 'done', completed_at: nowStamp() } : x)));
-    showToast(`Follow-up done${f ? `: ${myLeads.find(l => l.id === f.lead_id)?.customer_name ?? ''}` : ''}`);
+  const completeFollowup = async (followupId: number) => {
+    try {
+      const { message } = await sync.run({ type: 'complete-followup', followupId });
+      showToast(message);
+    } catch (e) {
+      showToast(`⚠️ ${(e as Error).message}`);
+    }
   };
 
   const handleSkip = () => {
