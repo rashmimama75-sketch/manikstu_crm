@@ -70,6 +70,8 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
 
   // Search State
   const [searchQuery, setSearchQuery] = useState<string>('');
+  // Set only when a global search is submitted, to seed the destination page's own search box
+  const [searchSeed, setSearchSeed] = useState<{ page: string; query: string; token: number } | null>(null);
 
   // Data Stores
   // Website orders + telecaller sales, shared by the dashboard and the Orders page
@@ -111,6 +113,19 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
   const [newStaffRole, setNewStaffRole] = useState('Telecaller');
   const [newStaffLoc, setNewStaffLoc] = useState('Bhubaneswar');
 
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newCustomerLocation, setNewCustomerLocation] = useState('Cuttack');
+  const [newCustomerLand, setNewCustomerLand] = useState('');
+
+  const [newFranchiseName, setNewFranchiseName] = useState('Manikstu Agri Hub');
+  const [newFranchiseLocation, setNewFranchiseLocation] = useState('');
+  const [newFranchiseOwner, setNewFranchiseOwner] = useState('');
+
+  const [newFpoName, setNewFpoName] = useState('');
+  const [newFpoLocation, setNewFpoLocation] = useState('');
+  const [newFpoCrop, setNewFpoCrop] = useState('');
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -148,6 +163,26 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
   const handleSelectCustomer = (cust: Customer) => {
     setSelectedCustomer(cust);
     setActivePage('farmer');
+  };
+
+  // Global search: jump to whichever page actually has a match, and seed its own search box
+  const handleSearchSubmit = () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    const ql = q.toLowerCase();
+    const inCustomers = customers.some(c => [c.name, c.phone, c.location].some(v => v.toLowerCase().includes(ql)));
+    const inOrders = salesOrders.some(o => [o.order_number, o.customer_name, o.phone, o.city].some(v => v.toLowerCase().includes(ql)));
+    const inEnquiries = webEnquiries.some(e => [e.name, e.email, e.phone ?? ''].some(v => v.toLowerCase().includes(ql)));
+    const inProducts = catalogProducts.some(p => [p.name, p.sku ?? '', p.size].some(v => v.toLowerCase().includes(ql)));
+
+    const target = inCustomers ? 'customers' : inOrders ? 'orders' : inEnquiries ? 'enquiries' : inProducts ? 'products' : null;
+    if (target) {
+      setActivePage(target);
+      setSearchSeed({ page: target, query: q, token: Date.now() });
+      showToast(`Found "${q}" in ${pageMeta[target].title}`);
+    } else {
+      showToast(`No matches for "${q}" in customers, orders, enquiries or products`);
+    }
   };
 
   // Move Staff Stage
@@ -251,6 +286,72 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
     showToast(`Staff candidate ${newS.name} added to pipeline`);
   };
 
+  // Add Farmer / Customer Profile
+  const handleAddCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustomerName.trim() || !newCustomerPhone.trim()) return;
+    const id = `C-${String(customers.length + 1).padStart(3, '0')}`;
+    const newCust: Customer = {
+      id,
+      name: newCustomerName.trim(),
+      location: newCustomerLocation,
+      ordersCount: 0,
+      lifetimeValue: 0,
+      lastOrder: '—',
+      status: 'New',
+      phone: newCustomerPhone.trim(),
+      landHolding: newCustomerLand.trim() || '—',
+      crops: [],
+      livestock: { cows: 0, buffaloes: 0, goats: 0, sheep: 0, poultry: 0 },
+    };
+    setCustomers([newCust, ...customers]);
+    setActiveModal(null);
+    setNewCustomerName('');
+    setNewCustomerPhone('');
+    setNewCustomerLand('');
+    showToast(`Farmer profile for ${newCust.name} added`);
+  };
+
+  // Add Franchise Hub
+  const handleAddFranchise = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFranchiseLocation.trim() || !newFranchiseOwner.trim()) return;
+    const newFr: Franchise = {
+      id: `FR-${franchises.length + 1}`,
+      name: newFranchiseName.trim() || 'Manikstu Agri Hub',
+      location: newFranchiseLocation.trim(),
+      owner: newFranchiseOwner.trim(),
+      ordersThisMonth: 0,
+      revenue: '—',
+      status: 'Onboarding',
+    };
+    setFranchises([...franchises, newFr]);
+    setActiveModal(null);
+    setNewFranchiseLocation('');
+    setNewFranchiseOwner('');
+    showToast(`Franchise hub in ${newFr.location} added to onboarding`);
+  };
+
+  // Partner New FPO
+  const handleAddFpo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFpoName.trim() || !newFpoLocation.trim()) return;
+    const newFpo: FPO = {
+      id: `FPO-${fpos.length + 1}`,
+      name: newFpoName.trim(),
+      location: newFpoLocation.trim(),
+      members: 0,
+      primaryCrop: newFpoCrop.trim() || '—',
+      status: 'Onboarding',
+    };
+    setFpos([...fpos, newFpo]);
+    setActiveModal(null);
+    setNewFpoName('');
+    setNewFpoLocation('');
+    setNewFpoCrop('');
+    showToast(`${newFpo.name} added as a partner FPO`);
+  };
+
   // Reorder Item
   const handleTriggerReorder = (itemId: string) => {
     setInventory(prev => prev.map(inv => inv.id === itemId ? { ...inv, stock: inv.stock + 50, status: 'OK' } : inv));
@@ -319,6 +420,7 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
             subtitle={currentMeta.sub}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
+            onSearchSubmit={handleSearchSubmit}
             theme={theme}
             onToggleTheme={handleToggleTheme}
             unreadNotifsCount={notifications.length}
@@ -341,15 +443,18 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
 
           {activePage === 'orders' && (
             <OrdersView
+              key={searchSeed?.page === 'orders' ? searchSeed.token : 'orders'}
               orders={salesOrders}
               onOrdersChange={setSalesOrders}
               onOpenNewOrderModal={() => setActiveModal('newOrder')}
               onToast={showToast}
+              initialQuery={searchSeed?.page === 'orders' ? searchSeed.query : undefined}
             />
           )}
 
           {activePage === 'enquiries' && (
             <EnquiriesView
+              key={searchSeed?.page === 'enquiries' ? searchSeed.token : 'enquiries'}
               enquiries={webEnquiries}
               onEnquiriesChange={setWebEnquiries}
               leads={trackerLeads}
@@ -357,30 +462,36 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
               onConvertToLead={handleConvertToLead}
               onMoveToOnboarding={handleMoveToOnboarding}
               onToast={showToast}
+              initialQuery={searchSeed?.page === 'enquiries' ? searchSeed.query : undefined}
             />
           )}
 
           {activePage === 'customers' && (
             <CustomersView
+              key={searchSeed?.page === 'customers' ? searchSeed.token : 'customers'}
               customers={customers}
               onSelectCustomer={handleSelectCustomer}
               onOpenAddCustomerModal={() => setActiveModal('addCustomer')}
+              initialQuery={searchSeed?.page === 'customers' ? searchSeed.query : undefined}
             />
           )}
 
           {activePage === 'farmer' && (
             <FarmerDetailsView
               customer={selectedCustomer}
+              orders={salesOrders}
               onBack={() => setActivePage('customers')}
             />
           )}
 
           {activePage === 'products' && (
             <ProductsView
+              key={searchSeed?.page === 'products' ? searchSeed.token : 'products'}
               products={catalogProducts}
               onProductsChange={setCatalogProducts}
               orders={salesOrders}
               onToast={showToast}
+              initialQuery={searchSeed?.page === 'products' ? searchSeed.query : undefined}
             />
           )}
 
@@ -422,7 +533,14 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
 
           {activePage === 'reports' && (
             <ReportsView
-              onGenerateReport={(name) => showToast(`Generated ${name} Report (PDF)!`)}
+              salesOrders={salesOrders}
+              trackerLeads={trackerLeads}
+              staff={staff}
+              franchises={franchises}
+              fpos={fpos}
+              inventory={inventory}
+              transactions={transactions}
+              onToast={showToast}
             />
           )}
         </main>
@@ -558,6 +676,146 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
           <div className="modal-footer">
             <button type="button" className="btn-secondary" onClick={() => setActiveModal(null)}>Cancel</button>
             <button type="submit" className="btn-primary">Add Candidate</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Add Farmer Profile Modal */}
+      <Modal
+        isOpen={activeModal === 'addCustomer'}
+        onClose={() => setActiveModal(null)}
+        title="Add Farmer Profile"
+      >
+        <form onSubmit={handleAddCustomer}>
+          <div className="form-group">
+            <label>Farmer Name</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Ramesh Nayak"
+              value={newCustomerName}
+              onChange={(e) => setNewCustomerName(e.target.value)}
+            />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Phone</label>
+              <input
+                type="tel"
+                required
+                placeholder="10-digit mobile"
+                value={newCustomerPhone}
+                onChange={(e) => setNewCustomerPhone(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label>Location / District</label>
+              <select value={newCustomerLocation} onChange={(e) => setNewCustomerLocation(e.target.value)}>
+                {ORDER_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Land Holding (optional)</label>
+            <input
+              type="text"
+              placeholder="e.g. 3.5 acres"
+              value={newCustomerLand}
+              onChange={(e) => setNewCustomerLand(e.target.value)}
+            />
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn-secondary" onClick={() => setActiveModal(null)}>Cancel</button>
+            <button type="submit" className="btn-primary">Add Farmer</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Add Franchise Hub Modal */}
+      <Modal
+        isOpen={activeModal === 'addFranchise'}
+        onClose={() => setActiveModal(null)}
+        title="Add Franchise Hub"
+      >
+        <form onSubmit={handleAddFranchise}>
+          <div className="form-group">
+            <label>Hub Name</label>
+            <input
+              type="text"
+              required
+              value={newFranchiseName}
+              onChange={(e) => setNewFranchiseName(e.target.value)}
+            />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>District Location</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Sambalpur"
+                value={newFranchiseLocation}
+                onChange={(e) => setNewFranchiseLocation(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label>Franchise Partner</label>
+              <input
+                type="text"
+                required
+                placeholder="Owner name"
+                value={newFranchiseOwner}
+                onChange={(e) => setNewFranchiseOwner(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn-secondary" onClick={() => setActiveModal(null)}>Cancel</button>
+            <button type="submit" className="btn-primary">Add Franchise Hub</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Partner New FPO Modal */}
+      <Modal
+        isOpen={activeModal === 'addFpo'}
+        onClose={() => setActiveModal(null)}
+        title="Partner New FPO"
+      >
+        <form onSubmit={handleAddFpo}>
+          <div className="form-group">
+            <label>FPO Name</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Koraput Farmers' Producer Org."
+              value={newFpoName}
+              onChange={(e) => setNewFpoName(e.target.value)}
+            />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>District / Location</label>
+              <input
+                type="text"
+                required
+                value={newFpoLocation}
+                onChange={(e) => setNewFpoLocation(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label>Primary Harvest Crop</label>
+              <input
+                type="text"
+                placeholder="e.g. Paddy"
+                value={newFpoCrop}
+                onChange={(e) => setNewFpoCrop(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn-secondary" onClick={() => setActiveModal(null)}>Cancel</button>
+            <button type="submit" className="btn-primary">Partner FPO</button>
           </div>
         </form>
       </Modal>

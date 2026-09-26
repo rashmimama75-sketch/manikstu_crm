@@ -6,6 +6,7 @@ interface TopbarProps {
   subtitle: string;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  onSearchSubmit: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   unreadNotifsCount: number;
@@ -18,6 +19,7 @@ export default function Topbar({
   subtitle,
   searchQuery,
   onSearchChange,
+  onSearchSubmit,
   theme,
   onToggleTheme,
   unreadNotifsCount,
@@ -31,15 +33,18 @@ export default function Topbar({
         <div className="sub" id="page-sub">{subtitle}</div>
       </div>
       <div className="topbar-tools">
-        <div className="search">
+        <form
+          className="search"
+          onSubmit={(e) => { e.preventDefault(); onSearchSubmit(); }}
+        >
           <Search size={16} style={{ color: 'var(--ink-soft)' }} />
           <input
             type="text"
-            placeholder="Search orders, leads, farmers..."
+            placeholder="Search orders, enquiries, farmers, products… (Enter to jump)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
           />
-        </div>
+        </form>
 
         <button
           className="icon-btn"

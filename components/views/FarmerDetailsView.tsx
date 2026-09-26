@@ -1,12 +1,15 @@
 import React from 'react';
 import { Customer } from '../../data/initialData';
+import { SalesOrder } from '../../data/managerDashboard';
+import { rupees, shortDate } from '../../lib/format';
 
 interface FarmerDetailsViewProps {
   customer: Customer | null;
+  orders: SalesOrder[];
   onBack: () => void;
 }
 
-export default function FarmerDetailsView({ customer, onBack }: FarmerDetailsViewProps) {
+export default function FarmerDetailsView({ customer, orders, onBack }: FarmerDetailsViewProps) {
   const current = customer || {
     id: 'C-001',
     name: 'Debasish Nayak',
@@ -22,6 +25,10 @@ export default function FarmerDetailsView({ customer, onBack }: FarmerDetailsVie
   };
 
   const totalLivestock = Object.values(current.livestock).reduce((a, b) => a + b, 0);
+  const digitsOnly = (v: string) => v.replace(/\D/g, '');
+  const farmerOrders = orders
+    .filter(o => digitsOnly(o.phone).slice(-10) === digitsOnly(current.phone).slice(-10))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   return (
     <>
@@ -149,6 +156,7 @@ export default function FarmerDetailsView({ customer, onBack }: FarmerDetailsVie
         <div className="panel">
           <div className="panel-head">
             <h2>Recent Orders</h2>
+            <span className="link">{farmerOrders.length} {farmerOrders.length === 1 ? 'order' : 'orders'}</span>
           </div>
           <div className="table-wrap">
             <table>
@@ -161,30 +169,23 @@ export default function FarmerDetailsView({ customer, onBack }: FarmerDetailsVie
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td style={{ fontWeight: 600 }}>MK-2461</td>
-                  <td>Swarna paddy seed, 20kg</td>
-                  <td>₹2,400</td>
-                  <td>18 Sep</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: 600 }}>MK-2402</td>
-                  <td>Vermicompost, 50kg</td>
-                  <td>₹980</td>
-                  <td>3 Sep</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: 600 }}>MK-2358</td>
-                  <td>Neem-based pesticide</td>
-                  <td>₹410</td>
-                  <td>20 Aug</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: 600 }}>MK-2301</td>
-                  <td>Certified wheat seed, 25kg</td>
-                  <td>₹1,780</td>
-                  <td>2 Aug</td>
-                </tr>
+                {farmerOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '20px 0' }}>
+                      No orders on file for this phone number yet.
+                    </td>
+                  </tr>
+                ) : farmerOrders.slice(0, 6).map(o => (
+                  <tr key={o.id}>
+                    <td style={{ fontWeight: 600 }}>{o.order_number}</td>
+                    <td>
+                      {o.items[0]?.product_name ?? '—'}
+                      {o.items.length > 1 && ` +${o.items.length - 1} more`}
+                    </td>
+                    <td>{rupees(o.total)}</td>
+                    <td>{shortDate(o.created_at)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

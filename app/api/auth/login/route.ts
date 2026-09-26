@@ -22,8 +22,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Incorrect email or password' }, { status: 401 });
   }
 
+  let token: string;
+  try {
+    token = await createSessionToken(user);
+  } catch (err) {
+    // Most likely AUTH_SECRET isn't set in this environment's variables.
+    console.error('Login failed while creating the session token:', err);
+    return NextResponse.json({ error: 'Server is misconfigured (missing AUTH_SECRET). Contact an admin.' }, { status: 500 });
+  }
+
   const res = NextResponse.json({ redirectTo: ROLE_HOME[user.role] });
-  res.cookies.set(SESSION_COOKIE, await createSessionToken(user), {
+  res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

@@ -17,6 +17,7 @@ interface OrdersViewProps {
   onOrdersChange: React.Dispatch<React.SetStateAction<SalesOrder[]>>;
   onOpenNewOrderModal: () => void;
   onToast: (message: string) => void;
+  initialQuery?: string;
 }
 
 const STATUSES: OrderStatus[] = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
@@ -96,13 +97,13 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid #ddd;font-size:14px}.r
   win.print();
 }
 
-export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal, onToast }: OrdersViewProps) {
+export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal, onToast, initialQuery }: OrdersViewProps) {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [sourceFilter, setSourceFilter] = useState<OrderSource | 'all'>('all');
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
-  const [dateRange, setDateRange] = useState<DateRange>('month');
+  const [dateRange, setDateRange] = useState<DateRange>(initialQuery ? 'all' : 'month');
   const [alert, setAlert] = useState<Alert | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
