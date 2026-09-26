@@ -144,7 +144,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
 
   // Call desk page: the Call button dials straight away and opens the calling window there.
   const [callTarget, setCallTarget] = useState<CallTarget | null>(null);
-  const startCallFromDesk = (leadId: number) => {
+  const startCallFromDesk = (leadId: number, followupId?: number) => {
     if (callLive) {
       showToast('Finish the call on the Call dashboard first');
       return;
@@ -152,10 +152,17 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     const lead = myLeads.find(l => l.id === leadId);
     if (!lead) return;
     const followup =
+      (followupId !== undefined ? myFollowups.find(f => f.id === followupId) : undefined) ??
       queue.find(q => q.lead.id === leadId)?.followup ??
       myFollowups.filter(f => f.lead_id === leadId && f.status !== 'done').sort((a, b) => a.due_at.localeCompare(b.due_at))[0];
     dial(lead.phone);
     setCallTarget({ lead, followup });
+  };
+
+  const completeFollowup = (followupId: number) => {
+    const f = myFollowups.find(x => x.id === followupId);
+    setFollowups(prev => prev.map(x => (x.id === followupId ? { ...x, status: 'done', completed_at: nowStamp() } : x)));
+    showToast(`Follow-up done${f ? `: ${myLeads.find(l => l.id === f.lead_id)?.customer_name ?? ''}` : ''}`);
   };
 
   const handleSkip = () => {
@@ -312,6 +319,10 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
               onEndCall={() => setCallEndedAt(Date.now())}
               onSave={handleSave}
               onSkip={handleSkip}
+              followups={myFollowups}
+              leads={myLeads}
+              onCallFollowup={startCallFromDesk}
+              onFollowupDone={completeFollowup}
             />
           )}
           {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
@@ -352,7 +363,18 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
       <FooterFrieze />
 
       {callTarget && (
-        <CallModal key={callTarget.lead.id} target={callTarget} onClose={() => setCallTarget(null)} />
+        <CallModal
+          key={callTarget.lead.id}
+          target={callTarget}
+          me={me}
+          history={activities.filter(a => a.lead_id === callTarget.lead.id).sort((a, b) => b.created_at.localeCompare(a.created_at))}
+          initialForm={emptyForm(callTarget.lead.stage_id, callTarget.followup?.note ?? '')}
+          onSave={(outcome, callForm, durationSec) => {
+            logCall(callTarget, outcome, callForm, durationSec);
+            setCallTarget(null);
+          }}
+          onClose={() => setCallTarget(null)}
+        />
       )}
     </div>
   );

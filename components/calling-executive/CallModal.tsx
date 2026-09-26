@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Phone, PhoneOff } from 'lucide-react';
-import { Followup, TrackerLead } from '../../data/managerDashboard';
-import { ago } from '../../lib/format';
+import { CallOutcome, Followup, LeadActivity, Telecaller, TrackerLead } from '../../data/managerDashboard';
+import { ago, shortDateTime } from '../../lib/format';
 import Modal from '../Modal';
-import { stageName, verticalName } from '../telecaller/tcData';
+import { StatusChip } from '../telecaller/shared';
+import { OUTCOMES, stageName, stagesFor, verticalName } from '../telecaller/tcData';
+import type { CallForm } from './CallDeskView';
+import { OUTCOME_COLORS } from './queue';
+import { fillScript, scriptFor } from './scripts';
 
 export interface CallTarget {
   lead: TrackerLead;
@@ -12,6 +16,10 @@ export interface CallTarget {
 
 interface Props {
   target: CallTarget;
+  me: Telecaller;
+  history: LeadActivity[];
+  initialForm: CallForm;
+  onSave: (outcome: CallOutcome, form: CallForm, durationSec: number | null) => void;
   onClose: () => void;
 }
 
@@ -24,9 +32,15 @@ export function dial(phone: string) {
   a.click();
 }
 
-/** Calling window for the Call desk page: the call starts as soon as it opens (dialer + timer). */
-export default function CallModal({ target, onClose }: Props) {
+/**
+ * Calling window for the Call desk page: the call starts as soon as it opens
+ * (dialer + timer), and the outcome is logged here without leaving the page.
+ */
+export default function CallModal({ target, me, history, initialForm, onSave, onClose }: Props) {
   const { lead, followup } = target;
+  const script = scriptFor(lead.vertical_id);
+  const [form, setForm] = useState<CallForm>(initialForm);
+  const patch = (p: Partial<CallForm>) => setForm(f => ({ ...f, ...p }));
 
   // The call is already started by the click that opened this window.
   const [startedAt, setStartedAt] = useState(() => Date.now());
@@ -48,12 +62,12 @@ export default function CallModal({ target, onClose }: Props) {
   };
 
   const close = () => {
-    if (live && !window.confirm('The call is still running. End it and close?')) return;
+    if (live && !window.confirm('The call is still running. Close without saving it?')) return;
     onClose();
   };
 
   return (
-    <Modal isOpen onClose={close} title={`Calling ${lead.customer_name}`} closeOnBackdrop={false}>
+    <Modal isOpen onClose={close} title={`Calling ${lead.customer_name}`} wide closeOnBackdrop={false}>
       <div className="ce-modal-lead">
         {followup && <span className="chip transit">Callback</span>}
         <div className="ce-modal-phone">+91 {lead.phone}</div>
@@ -67,12 +81,86 @@ export default function CallModal({ target, onClose }: Props) {
         <div className={`ce-timer ${live ? 'live' : ''}`}>
           {live && <span className="ce-live-dot" />}{clock(elapsedSec)}
         </div>
-        <span className="ce-call-status">{live ? 'Call in progress · dialled on your phone app' : 'Call ended'}</span>
+        <span className="ce-call-status">{live ? 'Call in progress · dialled on your phone app' : 'Call ended · pick an outcome below'}</span>
         {live ? (
           <button className="btn-secondary" onClick={() => setEndedAt(Date.now())}><PhoneOff size={15} /> End call</button>
         ) : (
           <button className="call-btn ce-dial" onClick={redial}><Phone size={15} /> Call again</button>
         )}
+      </div>
+
+      <div className="ce-body">
+        <div className="ce-script">
+          <div className="ce-label">Script</div>
+          <p className="ce-opening">“{fillScript(script.opening, lead.customer_name, me.name)}”</p>
+          <ul>
+            {script.points.map(p => <li key={p}>{p}</li>)}
+          </ul>
+          <p className="loc">Close: “{fillScript(script.close, lead.customer_name, me.name)}”</p>
+        </div>
+        <div className="ce-history">
+          <div className="ce-label">Previous calls</div>
+          {history.length === 0 ? (
+            <div className="loc">First call to this customer.</div>
+          ) : (
+            <ul className="ce-history-list">
+              {history.slice(0, 4).map(a => (
+                <li key={a.id}>
+                  <StatusChip status={a.outcome} />
+                  <span>{a.note}</span>
+                  <span className="loc">{shortDateTime(a.created_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="ce-log">
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="cm-stage">Stage after this call</label>
+            <select id="cm-stage" value={form.stageId} onChange={e => patch({ stageId: Number(e.target.value) })}>
+              {stagesFor(lead.vertical_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="cm-note">Note</label>
+            <input id="cm-note" type="text" placeholder="What was discussed, next step…" value={form.note} onChange={e => patch({ note: e.target.value })} />
+          </div>
+        </div>
+
+        <label className="check-filter" style={{ marginBottom: 10, display: 'flex' }}>
+          <input type="checkbox" checked={form.scheduleNext} onChange={e => patch({ scheduleNext: e.target.checked })} />
+          Schedule a callback
+        </label>
+        {form.scheduleNext && (
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="cm-next-date">Date</label>
+              <input id="cm-next-date" type="date" value={form.nextDate} onChange={e => patch({ nextDate: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label htmlFor="cm-next-note">Reason</label>
+              <input id="cm-next-note" type="text" placeholder="e.g. Confirm quantity" value={form.nextNote} onChange={e => patch({ nextNote: e.target.value })} />
+            </div>
+          </div>
+        )}
+
+        <div className="ce-label">Outcome · saves the call</div>
+        <div className="ce-outcomes">
+          {OUTCOMES.map(o => (
+            <button
+              key={o}
+              className="ce-outcome"
+              style={{ borderColor: OUTCOME_COLORS[o] }}
+              onClick={() => onSave(o, form, o === 'Connected' ? elapsedSec : null)}
+            >
+              <span className="dot3" style={{ background: OUTCOME_COLORS[o] }} />
+              {o}
+            </button>
+          ))}
+        </div>
       </div>
     </Modal>
   );
