@@ -1,11 +1,9 @@
-import React from 'react';
-import { Phone, PhoneOff, SkipForward } from 'lucide-react';
-import { CALL_TARGET_DAILY, CallOutcome, LeadActivity, Telecaller } from '../../data/managerDashboard';
-import { ago, pct, shortDateTime } from '../../lib/format';
-import { StatusChip } from '../telecaller/shared';
-import { OUTCOMES, fmtDuration, stageName, stagesFor, verticalName } from '../telecaller/tcData';
-import { OUTCOME_COLORS, QUEUE_CHIP, QueueItem } from './queue';
-import { fillScript, scriptFor } from './scripts';
+import React, { useState } from 'react';
+import { Phone } from 'lucide-react';
+import { CALL_TARGET_DAILY, CallOutcome, Followup, LeadActivity, TODAY, Telecaller, TrackerLead } from '../../data/managerDashboard';
+import { dayStart, pct, shortDateTime } from '../../lib/format';
+import { fmtDuration, stageName, time12, verticalName } from '../telecaller/tcData';
+import { QUEUE_CHIP, QueueItem } from './queue';
 
 export interface CallForm {
   note: string;
@@ -32,9 +30,22 @@ interface Props {
   onEndCall: () => void;
   onSave: (outcome: CallOutcome) => void;
   onSkip: () => void;
+  followups: Followup[];
+  leads: TrackerLead[];
+  onCallFollowup: (leadId: number, followupId: number) => void;
+  onFollowupDone: (followupId: number) => void;
 }
 
-const clock = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+type FollowupTab = 'Overdue' | 'Due today' | 'Upcoming';
+const FOLLOWUP_TABS: FollowupTab[] = ['Overdue', 'Due today', 'Upcoming'];
+const FOLLOWUP_CHIP: Record<FollowupTab, string> = { Overdue: 'pending', 'Due today': 'transit', Upcoming: 'confirmed' };
+
+const followupTabOf = (f: Followup): FollowupTab | null => {
+  if (f.status === 'done') return null;
+  if (f.status === 'missed' || dayStart(f.due_at) < dayStart(TODAY)) return 'Overdue';
+  if (f.due_at.startsWith(TODAY)) return 'Due today';
+  return 'Upcoming';
+};
 
 export default function CallDeskView({
   me,
@@ -53,12 +64,24 @@ export default function CallDeskView({
   onEndCall,
   onSave,
   onSkip,
+  followups,
+  leads,
+  onCallFollowup,
+  onFollowupDone,
 }: Props) {
+  const followupCounts = FOLLOWUP_TABS.reduce(
+    (m, t) => ({ ...m, [t]: followups.filter(f => followupTabOf(f) === t).length }),
+    {} as Record<FollowupTab, number>
+  );
+  const [followupTab, setFollowupTab] = useState<FollowupTab>(followupCounts.Overdue > 0 ? 'Overdue' : 'Due today');
+  const followupRows = followups
+    .filter(f => followupTabOf(f) === followupTab)
+    .sort((a, b) => a.due_at.localeCompare(b.due_at));
+  const leadOf = (id: number) => leads.find(l => l.id === id);
+
   const connected = todayCalls.filter(a => a.outcome === 'Connected').length;
   const talkSec = todayCalls.reduce((sum, a) => sum + (a.duration_sec ?? 0), 0);
   const remaining = Math.max(0, CALL_TARGET_DAILY - todayCalls.length);
-  const lead = current?.lead;
-  const script = lead ? scriptFor(lead.vertical_id) : null;
   const onCall = callLive;
 
   return (
@@ -105,117 +128,45 @@ export default function CallDeskView({
           )}
         </div>
 
-        {/* Active call */}
-        <div className="panel ce-call">
-          {!lead || !current || !script ? (
-            <div className="ce-empty">
-              <h2>All caught up</h2>
-              <p className="loc">No one left in your queue. New leads and callbacks will appear here.</p>
-            </div>
+        {/* Follow-ups */}
+        <div className="panel ce-queue">
+          <div className="panel-head">
+            <h2>Follow-ups</h2>
+            <span className="panel-meta">{followupCounts.Overdue + followupCounts['Due today']} due</span>
+          </div>
+          <div className="filters ce-fu-tabs">
+            {FOLLOWUP_TABS.map(t => (
+              <button key={t} className={`filter-chip ${followupTab === t ? 'active' : ''}`} onClick={() => setFollowupTab(t)}>
+                {t} ({followupCounts[t]})
+              </button>
+            ))}
+          </div>
+          {followupRows.length === 0 ? (
+            <div className="loc">No {followupTab.toLowerCase()} follow-ups.</div>
           ) : (
-            <>
-              <div className="ce-call-head">
-                <div>
-                  <span className={`chip ${QUEUE_CHIP[current.reason]}`}>{current.reason}</span>
-                  <h2 className="ce-name">{lead.customer_name}</h2>
-                  <div className="loc">
-                    {verticalName(lead.vertical_id)} · {stageName(lead.stage_id)} · Source: {lead.source} · Added {ago(lead.created_at)}
-                  </div>
-                  {current.followup && <div className="ce-reason">Callback reason: {current.followup.note}</div>}
-                </div>
-                <div className="ce-call-actions">
-                  <div className={`ce-timer ${onCall ? 'live' : ''}`}>
-                    {onCall && <span className="ce-live-dot" />}{callTimed ? clock(elapsedSec) : '00:00'}
-                  </div>
-                  {onCall ? (
-                    <button className="btn-secondary" onClick={onEndCall}><PhoneOff size={15} /> End call</button>
-                  ) : (
-                    <a className="call-btn ce-dial" href={`tel:+91${lead.phone}`} onClick={onStartCall}>
-                      <Phone size={15} /> Call {lead.phone}
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              <div className="ce-body">
-                <div className="ce-script">
-                  <div className="ce-label">Script</div>
-                  <p className="ce-opening">“{fillScript(script.opening, lead.customer_name, me.name)}”</p>
-                  <ul>
-                    {script.points.map(p => <li key={p}>{p}</li>)}
-                  </ul>
-                  <p className="loc">Close: “{fillScript(script.close, lead.customer_name, me.name)}”</p>
-                </div>
-
-                <div className="ce-history">
-                  <div className="ce-label">Previous calls</div>
-                  {leadHistory.length === 0 ? (
-                    <div className="loc">First call to this customer.</div>
-                  ) : (
-                    <ul className="ce-history-list">
-                      {leadHistory.slice(0, 4).map(a => (
-                        <li key={a.id}>
-                          <StatusChip status={a.outcome} />
-                          <span>{a.note}</span>
-                          <span className="loc">{shortDateTime(a.created_at)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-
-              <div className="ce-log">
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="ce-stage">Stage after this call</label>
-                    <select id="ce-stage" value={form.stageId} onChange={e => onFormChange({ stageId: Number(e.target.value) })}>
-                      {stagesFor(lead.vertical_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="ce-note">Note</label>
-                    <input
-                      id="ce-note"
-                      type="text"
-                      placeholder="What was discussed, next step…"
-                      value={form.note}
-                      onChange={e => onFormChange({ note: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <label className="check-filter" style={{ marginBottom: 10, display: 'flex' }}>
-                  <input type="checkbox" checked={form.scheduleNext} onChange={e => onFormChange({ scheduleNext: e.target.checked })} />
-                  Schedule a callback
-                </label>
-                {form.scheduleNext && (
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label htmlFor="ce-next-date">Date</label>
-                      <input id="ce-next-date" type="date" value={form.nextDate} onChange={e => onFormChange({ nextDate: e.target.value })} />
+            <ul className="ce-queue-list">
+              {followupRows.map(f => {
+                const lead = leadOf(f.lead_id);
+                return (
+                  <li key={f.id} className="ce-fu-item">
+                    <div className="ce-queue-main">
+                      <span className="name">{lead?.customer_name ?? '—'}</span>
+                      <span className="loc">{f.note}</span>
+                      <span className={`ce-fu-due ${followupTab === 'Overdue' ? 'text-warn' : ''}`}>
+                        <span className={`chip ${FOLLOWUP_CHIP[followupTab]}`}>{f.status === 'missed' ? 'Missed' : followupTab}</span>
+                        {f.due_at.startsWith(TODAY) ? `Today, ${time12(f.due_at)}` : shortDateTime(f.due_at).split(',')[0]}
+                      </span>
                     </div>
-                    <div className="form-group">
-                      <label htmlFor="ce-next-note">Reason</label>
-                      <input id="ce-next-note" type="text" placeholder="e.g. Confirm quantity" value={form.nextNote} onChange={e => onFormChange({ nextNote: e.target.value })} />
-                    </div>
-                  </div>
-                )}
-
-                <div className="ce-label">Outcome · saves and opens the next call</div>
-                <div className="ce-outcomes">
-                  {OUTCOMES.map(o => (
-                    <button key={o} className="ce-outcome" style={{ borderColor: OUTCOME_COLORS[o] }} onClick={() => onSave(o)}>
-                      <span className="dot3" style={{ background: OUTCOME_COLORS[o] }} />
-                      {o}
-                    </button>
-                  ))}
-                  <button className="btn-secondary ce-skip" onClick={onSkip} disabled={onCall}>
-                    <SkipForward size={14} /> Skip
-                  </button>
-                </div>
-              </div>
-            </>
+                    {lead && (
+                      <div className="row-actions ce-fu-actions">
+                        <button className="call-btn" onClick={() => onCallFollowup(lead.id, f.id)}><Phone size={12} /> Call</button>
+                        <button className="kanban-btn" onClick={() => onFollowupDone(f.id)}>Done</button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </div>
