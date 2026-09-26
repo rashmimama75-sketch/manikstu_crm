@@ -44,10 +44,7 @@ import {
 import {
   SALES_ORDERS,
   TRACKER_PRODUCTS,
-  TRACKER_LEADS,
   WEB_ENQUIRIES,
-  FOLLOWUPS,
-  LEAD_ACTIVITIES,
   TRACKER_SALES,
   TELECALLERS,
   VERTICALS,
@@ -60,12 +57,15 @@ import {
 } from '../data/managerDashboard';
 import { CATALOG_PRODUCTS, CatalogProduct } from '../data/catalogProducts';
 import { nowStamp } from '../lib/format';
+import type { TrackerState } from '../lib/trackerOps';
+import { useTracker } from '../lib/useTracker';
+import SyncBadge from './SyncBadge';
 import type { SessionUser } from '../lib/session';
 
 const ORDER_PRODUCTS = TRACKER_PRODUCTS.filter(p => p.vertical_id === 1);
 const ORDER_CITIES = ['Bhubaneswar', 'Cuttack', 'Berhampur', 'Sambalpur', 'Balasore', 'Koraput', 'Rayagada', 'Bolangir', 'Keonjhar', 'Angul'];
 
-export default function ManagerDashboard({ user }: { user: SessionUser }) {
+export default function ManagerDashboard({ user, tracker }: { user: SessionUser; tracker: TrackerState }) {
   // Page Routing State
   const [activePage, setActivePage] = useState<string>('dashboard');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -83,12 +83,15 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
   // Website orders + telecaller sales, shared by the dashboard and the Orders page
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>(SALES_ORDERS);
   // Telecalling leads and website enquiries, shared by the dashboard and the Enquiries page
-  const [trackerLeads, setTrackerLeads] = useState<TrackerLead[]>(TRACKER_LEADS);
+  // Leads, calls and follow-ups are shared with the telecalling head and the calling executives
+  // (kept in sync with the server), so Team overview shows their latest work automatically.
+  const sync = useTracker(tracker);
+  const trackerLeads = sync.data.leads;
   // Telecalling section (view-only): same tracker data the telecalling head works from
   const [selectedExecutive, setSelectedExecutive] = useState<number | null>(null);
   const telecallingData: TeamData = useMemo(
-    () => ({ leads: trackerLeads, followups: FOLLOWUPS, activities: LEAD_ACTIVITIES, sales: TRACKER_SALES }),
-    [trackerLeads],
+    () => ({ leads: sync.data.leads, followups: sync.data.followups, activities: sync.data.activities, sales: TRACKER_SALES }),
+    [sync.data],
   );
   const telecallingAlerts = useMemo(
     () => teamAlerts(staffStats(telecallingData, 'today', 'all')).filter(a => a.level === 'critical').length,
@@ -255,26 +258,30 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
   };
 
   // Website enquiry → telecalling lead in the first stage of the chosen vertical
-  const handleConvertToLead = (enquiry: WebEnquiry, verticalId: number, callerId: number) => {
+  const handleConvertToLead = async (enquiry: WebEnquiry, verticalId: number, callerId: number) => {
     if (!enquiry.phone) return;
-    const firstStage = STAGES.filter(s => s.vertical_id === verticalId).sort((a, b) => a.sort_order - b.sort_order)[0];
-    const now = nowStamp();
-    const lead: TrackerLead = {
-      id: Math.max(...trackerLeads.map(l => l.id)) + 1,
-      vertical_id: verticalId,
-      stage_id: firstStage.id,
-      assigned_to: callerId,
-      customer_name: enquiry.name,
-      phone: enquiry.phone,
-      source: 'Website',
-      created_at: now,
-      updated_at: now,
-    };
-    setTrackerLeads([lead, ...trackerLeads]);
-    setWebEnquiries(prev => prev.map(e => (e.id === enquiry.id ? { ...e, lead_id: lead.id, status: e.status === 'new' ? 'read' : e.status } : e)));
-    const caller = TELECALLERS.find(t => t.id === callerId)?.name;
-    const vertical = VERTICALS.find(v => v.id === verticalId)?.name;
-    showToast(`Lead #${lead.id} created in ${vertical} and assigned to ${caller}`);
+    try {
+      const { createdIds } = await sync.run({
+        type: 'add-lead',
+        lead: { vertical_id: verticalId, assigned_to: callerId, customer_name: enquiry.name, phone: enquiry.phone, source: 'Website' },
+      });
+      const leadId = createdIds[0];
+      setWebEnquiries(prev => prev.map(e => (e.id === enquiry.id ? { ...e, lead_id: leadId, status: e.status === 'new' ? 'read' : e.status } : e)));
+      const caller = TELECALLERS.find(t => t.id === callerId)?.name;
+      const vertical = VERTICALS.find(v => v.id === verticalId)?.name;
+      showToast(`Lead #${leadId} created in ${vertical} and assigned to ${caller}`);
+    } catch (e) {
+      showToast(`⚠️ ${(e as Error).message}`);
+    }
+  };
+
+  const handleReassignLead = async (leadId: number, callerId: number) => {
+    try {
+      const { message } = await sync.run({ type: 'assign', leadIds: [leadId], callerId });
+      showToast(message);
+    } catch (e) {
+      showToast(`⚠️ ${(e as Error).message}`);
+    }
   };
 
   // Career enquiry → user onboarding pipeline
@@ -445,6 +452,7 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
             unreadNotifsCount={notifications.length}
             onToggleNotifs={() => setIsNotifsOpen(!isNotifsOpen)}
             onQuickAction={() => setActiveModal('quickAction')}
+            status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
           />
 
           {/* PAGE ROUTING */}
@@ -452,7 +460,9 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
             <DashboardView
               orders={salesOrders}
               leads={trackerLeads}
-              onLeadsChange={setTrackerLeads}
+              followups={sync.data.followups}
+              activities={sync.data.activities}
+              onReassignLead={handleReassignLead}
               enquiries={webEnquiries}
               onEnquiriesChange={setWebEnquiries}
               onNavigate={setActivePage}
@@ -572,6 +582,8 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
             <ReportsView
               salesOrders={salesOrders}
               trackerLeads={trackerLeads}
+              followups={sync.data.followups}
+              activities={sync.data.activities}
               staff={staff}
               franchises={franchises}
               fpos={fpos}

@@ -12,6 +12,8 @@ interface TopbarProps {
   unreadNotifsCount: number;
   onToggleNotifs: () => void;
   onQuickAction: () => void;
+  /** Shown at the start of the tools, e.g. the live-sync indicator. */
+  status?: React.ReactNode;
 }
 
 export default function Topbar({
@@ -24,7 +26,8 @@ export default function Topbar({
   onToggleTheme,
   unreadNotifsCount,
   onToggleNotifs,
-  onQuickAction
+  onQuickAction,
+  status
 }: TopbarProps) {
   return (
     <div className="topbar">
@@ -33,6 +36,7 @@ export default function Topbar({
         <div className="sub" id="page-sub">{subtitle}</div>
       </div>
       <div className="topbar-tools">
+        {status}
         <form
           className="search"
           onSubmit={(e) => { e.preventDefault(); onSearchSubmit(); }}

@@ -6,6 +6,7 @@ import ExportMenu from '../ExportMenu';
 import HBarList from '../HBarList';
 import { OUTCOMES, PERIOD_LABEL, Period, TeamData, fmtDuration, inPeriod, isOverdue, staffStats, teamAlerts } from '../telecaller/tcData';
 import { allExecMetrics, callsPerDay, funnel } from './telecallingMetrics';
+import TelecallingLeadReport, { LiveCallFeed } from './TelecallingLeadReport';
 
 type SortKey = 'revenue' | 'calls' | 'connectRate' | 'openLeads' | 'overdue' | 'sales' | 'conversion';
 
@@ -125,6 +126,8 @@ export default function TelecallingOverviewView({ data, onOpenExecutive, onToast
         </div>
       )}
 
+      <LiveCallFeed data={data} onOpenExecutive={onOpenExecutive} />
+
       <div className="panel" style={{ marginBottom: 20 }}>
         <div className="panel-head"><h2>Leaderboard</h2><ExportMenu onExport={runExport} /></div>
         <div className="table-wrap">
@@ -212,8 +215,10 @@ export default function TelecallingOverviewView({ data, onOpenExecutive, onToast
         </div>
       </div>
 
+      <TelecallingLeadReport data={data} onToast={onToast} />
+
       <div className="panel-note">
-        View-only: reassigning leads and managing staff happens in the telecalling head&apos;s dashboard. Sample data: the backend has no team-wide call log, call outcomes or durations yet.
+        View-only: reassigning leads and managing staff happens in the telecalling head&apos;s dashboard. Leads, calls and follow-ups update automatically as the telecalling head assigns leads and the calling executives log calls or import calling reports.
       </div>
     </>
   );

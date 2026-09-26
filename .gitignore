@@ -9,5 +9,6 @@ out/
 # Copied from pdfjs-dist on npm install (see package.json postinstall)
 public/pdf.worker.min.mjs
 
-# Staff added on the Staff onboarding page (local only; contains password hashes)
+# Local data: staff added on the Staff onboarding page (contains password hashes)
+# and the shared telecalling data (tracker.json) until the backend is connected
 .data/
