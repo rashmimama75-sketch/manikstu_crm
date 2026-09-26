@@ -7,6 +7,7 @@ interface SidebarProps {
     orders: number;
     enquiries: number;
     staff: number;
+    telecalling?: number;
   };
 }
 
@@ -25,6 +26,13 @@ export default function Sidebar({ activePage, onSelectPage, counts }: SidebarPro
         { key: 'enquiries', label: 'Enquiries', count: counts.enquiries },
         { key: 'customers', label: 'Customers' },
         { key: 'products', label: 'Products' }
+      ]
+    },
+    {
+      label: 'Telecalling',
+      items: [
+        { key: 'tc-overview', label: 'Team overview', count: counts.telecalling },
+        { key: 'tc-executives', label: 'Telecalling executives' }
       ]
     },
     {

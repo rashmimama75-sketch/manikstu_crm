@@ -1982,3 +1982,41 @@ button.score-btn:last-child { border-right: none; }
 .legend-dot.available { background: var(--leaf); }
 .panel-head .link-btn { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; color: var(--leaf); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .toolbar-actions .filter-select { min-width: 140px; }
+
+/* Orders & tracking: order number on one line, date under it; eye button */
+.order-cell { white-space: nowrap; }
+.order-cell .order-no { display: block; }
+.order-cell .loc { display: block; margin-top: 2px; }
+.track-action { width: 44px; text-align: right; }
+.eye-btn { width: 32px; height: 32px; margin-left: auto; color: var(--leaf); cursor: pointer; }
+.eye-btn:hover { background: var(--leaf); color: var(--white); border-color: var(--leaf); }
+
+/* ---- Manager: Telecalling section ------------------------------------------------------ */
+.exec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; margin-bottom: 14px; }
+.exec-card { text-align: left; font: inherit; color: inherit; background: var(--card-bg); border: 1px solid var(--line); border-radius: 14px; padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.exec-card:hover { border-color: var(--leaf); box-shadow: 0 4px 14px rgba(45, 80, 22, 0.08); }
+.exec-card.inactive { opacity: 0.75; }
+.exec-top { display: flex; align-items: center; gap: 12px; }
+.exec-top .avatar { transform: none; flex-shrink: 0; }
+.avatar.big { width: 56px; height: 56px; font-size: 19px; }
+.exec-who { flex: 1; min-width: 0; }
+.exec-who h2 { font-family: 'Playfair Display', serif; font-size: 22px; margin-bottom: 4px; }
+.exec-who .loc + .loc { margin-top: 3px; }
+.exec-name { font-weight: 700; font-size: 15px; }
+.exec-body { display: flex; align-items: center; gap: 14px; }
+.exec-ring { text-align: center; }
+.exec-ring .ring-wrap, .exec-profile-ring .ring-wrap { width: 88px; height: 88px; }
+.exec-ring .ring-wrap svg, .exec-profile-ring .ring-wrap svg { width: 88px; height: 88px; }
+.exec-ring .rnum, .exec-profile-ring .rnum { font-size: 17px; }
+.exec-stats { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.exec-more { font-size: 12.5px; font-weight: 600; color: var(--leaf); align-self: flex-end; }
+.exec-profile { margin-bottom: 18px; }
+.exec-profile-ring { text-align: center; flex-shrink: 0; }
+.back-link.link-btn { background: none; border: none; padding: 0; font-family: inherit; }
+.mini-stat.warn .mini-num { color: var(--rust); }
+.compare-table { width: 100%; }
+.compare-table td, .compare-table th { padding: 8px 6px; }
+.cmp-arrow { width: 24px; text-align: center; color: var(--ink-soft); font-size: 11px; }
+.cmp-arrow.up { color: var(--leaf); }
+.cmp-arrow.down { color: var(--rust); }
+@media (max-width: 768px) { .exec-profile .exec-top { flex-wrap: wrap; } }
