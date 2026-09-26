@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import HeaderFrieze from './HeaderFrieze';
 import FooterFrieze from './FooterFrieze';
 import Masthead from './Masthead';
@@ -22,6 +22,9 @@ import FpoView from './views/FpoView';
 import InventoryView from './views/InventoryView';
 import MonetaryView from './views/MonetaryView';
 import ReportsView from './views/ReportsView';
+import TelecallingOverviewView from './views/TelecallingOverviewView';
+import TelecallingExecutivesView from './views/TelecallingExecutivesView';
+import { TeamData, staffStats, teamAlerts } from './telecaller/tcData';
 
 // Initial Data
 import {
@@ -43,6 +46,9 @@ import {
   TRACKER_PRODUCTS,
   TRACKER_LEADS,
   WEB_ENQUIRIES,
+  FOLLOWUPS,
+  LEAD_ACTIVITIES,
+  TRACKER_SALES,
   TELECALLERS,
   VERTICALS,
   STAGES,
@@ -78,6 +84,16 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>(SALES_ORDERS);
   // Telecalling leads and website enquiries, shared by the dashboard and the Enquiries page
   const [trackerLeads, setTrackerLeads] = useState<TrackerLead[]>(TRACKER_LEADS);
+  // Telecalling section (view-only): same tracker data the telecalling head works from
+  const [selectedExecutive, setSelectedExecutive] = useState<number | null>(null);
+  const telecallingData: TeamData = useMemo(
+    () => ({ leads: trackerLeads, followups: FOLLOWUPS, activities: LEAD_ACTIVITIES, sales: TRACKER_SALES }),
+    [trackerLeads],
+  );
+  const telecallingAlerts = useMemo(
+    () => teamAlerts(staffStats(telecallingData, 'today', 'all')).filter(a => a.level === 'critical').length,
+    [telecallingData],
+  );
   const [webEnquiries, setWebEnquiries] = useState<WebEnquiry[]>(WEB_ENQUIRIES);
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
   // Website product catalogue, editable on the Products page
@@ -146,6 +162,8 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
     dashboard:       { title: "Manager Dashboard", sub: "Telecalling team, sales pipeline, website orders and enquiries at a glance." },
     orders:          { title: "Orders", sub: "Website and telecaller orders — confirm, ship, deliver and collect payment." },
     enquiries:       { title: "Website Enquiries", sub: "Messages from the website contact form — reply, convert sales enquiries to leads, archive." },
+    'tc-overview':   { title: "Telecalling · Team Overview", sub: "The whole telecalling team: calls, leads, follow-ups, sales and who needs a look." },
+    'tc-executives': { title: "Telecalling Executives", sub: "Every telecalling executive. Tap one to see their leads, calls, follow-ups and sales." },
     customers:       { title: "Farmer Network", sub: "Directory of farmers across Odisha with crop profiles and purchase history." },
     farmer:          { title: "Farmer Profile", sub: "Land holding, livestock breakdown, crops and past orders." },
     products:        { title: "Products", sub: "Website catalogue — stock, price, visibility and 30-day sales for every product." },
@@ -406,11 +424,12 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
       <div className="shell">
         <Sidebar
           activePage={activePage}
-          onSelectPage={setActivePage}
+          onSelectPage={page => { setActivePage(page); if (page === 'tc-executives') setSelectedExecutive(null); }}
           counts={{
             orders: salesOrders.filter(o => o.status === 'pending').length,
             enquiries: webEnquiries.filter(e => e.status === 'new').length,
-            staff: staff.filter(s => s.stage === 'Applied').length
+            staff: staff.filter(s => s.stage === 'Applied').length,
+            telecalling: telecallingAlerts
           }}
         />
 
@@ -463,6 +482,24 @@ export default function ManagerDashboard({ user }: { user: SessionUser }) {
               onMoveToOnboarding={handleMoveToOnboarding}
               onToast={showToast}
               initialQuery={searchSeed?.page === 'enquiries' ? searchSeed.query : undefined}
+            />
+          )}
+
+          {activePage === 'tc-overview' && (
+            <TelecallingOverviewView
+              data={telecallingData}
+              onOpenExecutive={id => { setSelectedExecutive(id); setActivePage('tc-executives'); window.scrollTo(0, 0); }}
+              onToast={showToast}
+            />
+          )}
+
+          {activePage === 'tc-executives' && (
+            <TelecallingExecutivesView
+              data={telecallingData}
+              selectedId={selectedExecutive}
+              onSelect={id => { setSelectedExecutive(id); window.scrollTo(0, 0); }}
+              searchQuery=""
+              onToast={showToast}
             />
           )}
 
