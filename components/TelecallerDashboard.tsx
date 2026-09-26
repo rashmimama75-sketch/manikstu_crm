@@ -18,26 +18,22 @@ import { trackingFor } from './telecaller/orderTracking';
 import { Complaint, INITIAL_COMPLAINTS } from '../data/complaints';
 import { isUnassigned } from './telecaller/complaintsUtil';
 import {
-  FOLLOWUPS,
-  LEAD_ACTIVITIES,
   SALES_ORDERS,
-  TRACKER_LEADS,
   TRACKER_SALES,
   WEB_ENQUIRIES,
-  STAGES,
-  Followup,
-  TrackerLead,
 } from '../data/managerDashboard';
-import { nowStamp } from '../lib/format';
+import type { TrackerState } from '../lib/trackerOps';
+import { useTracker } from '../lib/useTracker';
+import SyncBadge from './SyncBadge';
 import type { NewLead } from './telecaller/ImportLeads';
-import { TeamData, callerName, isOverdue, staffStats, teamAlerts } from './telecaller/tcData';
+import { TeamData, isOverdue, staffStats, teamAlerts } from './telecaller/tcData';
 import type { SessionUser } from '../lib/session';
 
 /**
  * Head telecalling dashboard: the telecalling head's view of the whole telecalling team.
  * Works on the same tracker data the manager sees (all telecallers' leads, calls, follow-ups, sales).
  */
-export default function TelecallerDashboard({ user }: { user: SessionUser }) {
+export default function TelecallerDashboard({ user, tracker }: { user: SessionUser; tracker: TrackerState }) {
   const firstName = user.name.split(' ')[0];
 
   const [activePage, setActivePage] = useState('overview');
@@ -46,13 +42,14 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Reassigning changes leads and follow-ups; calls and sales are read-only here.
-  const [leads, setLeads] = useState<TrackerLead[]>(TRACKER_LEADS);
-  const [followups, setFollowups] = useState<Followup[]>(FOLLOWUPS);
+  // Leads, calls and follow-ups are shared with the calling executives and the manager (kept in sync
+  // with the server). Importing and assigning leads change them here; calls come in from the executives.
+  const sync = useTracker(tracker);
+  const { leads, followups, activities } = sync.data;
   const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
   const data: TeamData = useMemo(
-    () => ({ leads, followups, activities: LEAD_ACTIVITIES, sales: TRACKER_SALES }),
-    [leads, followups],
+    () => ({ leads, followups, activities, sales: TRACKER_SALES }),
+    [leads, followups, activities],
   );
 
   const todayStats = useMemo(() => staffStats(data, 'today', 'all'), [data]);
@@ -125,34 +122,28 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
   };
 
   /** Move leads (and their pending follow-ups) to another telecaller. */
-  const handleReassign = (leadIds: number[], toCallerId: number) => {
-    const ids = new Set(leadIds);
-    setLeads(prev => prev.map(l => (ids.has(l.id) ? { ...l, assigned_to: toCallerId } : l)));
-    setFollowups(prev => prev.map(f => (ids.has(f.lead_id) && f.status !== 'done' ? { ...f, caller_id: toCallerId, status: 'pending' } : f)));
-    showToast(`${leadIds.length} lead${leadIds.length > 1 ? 's' : ''} moved to ${callerName(toCallerId)}`);
+  const handleReassign = async (leadIds: number[], toCallerId: number) => {
+    try {
+      const { message } = await sync.run({ type: 'assign', leadIds, callerId: toCallerId });
+      showToast(message);
+    } catch (e) {
+      showToast(`⚠️ ${(e as Error).message}`);
+    }
   };
 
   /** Create leads from an imported Excel / PDF file, in the first stage of their product line. */
-  const handleImport = (newLeads: NewLead[]) => {
-    const now = nowStamp();
-    setLeads(prev => {
-      let nextId = Math.max(0, ...prev.map(l => l.id)) + 1;
-      const created: TrackerLead[] = newLeads.map(l => ({
-        ...l,
-        id: nextId++,
-        stage_id: STAGES.filter(s => s.vertical_id === l.vertical_id).sort((a, b) => a.sort_order - b.sort_order)[0].id,
-        created_at: now,
-        updated_at: now,
-      }));
-      return [...created, ...prev];
-    });
-    const people = new Set(newLeads.map(l => l.assigned_to)).size;
-    showToast(`${newLeads.length} lead${newLeads.length === 1 ? '' : 's'} imported and assigned to ${people} telecaller${people === 1 ? '' : 's'}`);
+  const handleImport = async (newLeads: NewLead[]) => {
+    try {
+      const { message } = await sync.run({ type: 'import-leads', leads: newLeads });
+      showToast(message);
+    } catch (e) {
+      showToast(`⚠️ ${(e as Error).message}`);
+    }
   };
 
   return (
     <div>
-      {toastMessage && <div className="toast">✅ {toastMessage}</div>}
+      {toastMessage && <div className={`toast ${toastMessage.startsWith('⚠️') ? 'toast-error' : ''}`}>{toastMessage.startsWith('⚠️') ? toastMessage : `✅ ${toastMessage}`}</div>}
 
       <div className="app-header">
       <div className="masthead">
@@ -218,6 +209,7 @@ export default function TelecallerDashboard({ user }: { user: SessionUser }) {
               <div className="sub">{currentMeta.sub}</div>
             </div>
             <div className="topbar-tools">
+              <SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />
               <div className="search">
                 <Search size={16} style={{ color: 'var(--ink-soft)' }} />
                 <input

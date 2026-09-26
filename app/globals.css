@@ -1991,3 +1991,15 @@ button.score-btn:last-child { border-right: none; }
 .cmp-arrow.up { color: var(--leaf); }
 .cmp-arrow.down { color: var(--rust); }
 @media (max-width: 768px) { .exec-profile .exec-top { flex-wrap: wrap; } }
+
+/* ---- Live sync between dashboards ------------------------------------------------------ */
+.sync-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-soft); padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card-bg); white-space: nowrap; cursor: default; }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.sync-badge.live { color: var(--leaf); }
+.sync-badge.live .sync-dot { background: var(--leaf); box-shadow: 0 0 0 0 rgba(58, 112, 48, 0.5); animation: sync-pulse 2s infinite; }
+.sync-badge.offline { color: var(--rust); border-color: var(--rust); }
+.sync-badge.offline .sync-dot { background: var(--rust); }
+@keyframes sync-pulse { 0% { box-shadow: 0 0 0 0 rgba(58, 112, 48, 0.45); } 70% { box-shadow: 0 0 0 6px rgba(58, 112, 48, 0); } 100% { box-shadow: 0 0 0 0 rgba(58, 112, 48, 0); } }
+@media (prefers-reduced-motion: reduce) { .sync-badge.live .sync-dot { animation: none; } }
+.toast.toast-error { background: var(--rust); }
+.lead-note { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

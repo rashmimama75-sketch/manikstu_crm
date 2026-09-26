@@ -10,17 +10,12 @@ import CallHistoryView from './calling-executive/CallHistoryView';
 import CallbacksView from './calling-executive/CallbacksView';
 import CeReportsView from './calling-executive/CeReportsView';
 import CallModal, { CallTarget, dial } from './calling-executive/CallModal';
-import {
-  FOLLOWUPS,
-  LEAD_ACTIVITIES,
-  TODAY,
-  TRACKER_LEADS,
-  CallOutcome,
-  Followup,
-  LeadActivity,
-  TrackerLead,
-} from '../data/managerDashboard';
-import { dayStart, nowStamp } from '../lib/format';
+import { TODAY, CallOutcome } from '../data/managerDashboard';
+import { dayStart } from '../lib/format';
+import type { CallInput, TrackerState } from '../lib/trackerOps';
+import { useTracker } from '../lib/useTracker';
+import SyncBadge from './SyncBadge';
+import CallReportImport from './calling-executive/CallReportImport';
 import { stageOf } from './telecaller/tcData';
 import { QueueItem, buildQueue, callerFor } from './calling-executive/queue';
 import type { SessionUser } from '../lib/session';
@@ -39,7 +34,7 @@ const emptyForm = (stageId: number, nextNote = ''): CallForm => ({
   nextNote,
 });
 
-export default function CallingExecutiveDashboard({ user }: { user: SessionUser }) {
+export default function CallingExecutiveDashboard({ user, tracker }: { user: SessionUser; tracker: TrackerState }) {
   const firstName = user.name.split(' ')[0];
   const me = callerFor(user.name);
 
@@ -48,10 +43,10 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Same tracker data the manager and telecallers use; this executive works their own slice.
-  const [leads, setLeads] = useState<TrackerLead[]>(TRACKER_LEADS);
-  const [followups, setFollowups] = useState<Followup[]>(FOLLOWUPS);
-  const [activities, setActivities] = useState<LeadActivity[]>(LEAD_ACTIVITIES);
+  // Shared tracker data: leads the telecalling head assigns show up here automatically, and calls
+  // saved here reach the head's dashboard and the manager's Team overview.
+  const sync = useTracker(tracker);
+  const { leads, followups, activities } = sync.data;
 
   const myLeads = useMemo(() => leads.filter(l => l.assigned_to === me.id), [leads, me.id]);
   const myFollowups = useMemo(() => followups.filter(f => f.caller_id === me.id), [followups, me.id]);
@@ -111,51 +106,32 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
     setCallEndedAt(null);
   };
 
-  /** Records a call: activity, lead stage, follow-ups, and takes the lead out of the queue. */
-  const logCall = (
+  /** Records a call (activity, lead stage, follow-ups) on the server and takes the lead out of the queue. */
+  const logCall = async (
     { lead, followup }: CallTarget,
     outcome: CallOutcome,
     form: CallForm,
     durationSec: number | null,
   ) => {
-    const stamp = nowStamp();
-
-    setActivities(prev => [...prev, {
-      id: Math.max(0, ...prev.map(a => a.id)) + 1,
-      lead_id: lead.id,
-      caller_id: me.id,
-      stage_id: form.stageId,
-      note: form.note.trim() || (outcome === 'Connected' ? 'Spoke to customer' : outcome),
+    const call: CallInput = {
+      leadId: lead.id,
       outcome,
-      duration_sec: durationSec,
-      created_at: stamp,
-    }]);
-    setLeads(prev => prev.map(l => (l.id === lead.id ? { ...l, stage_id: form.stageId, updated_at: stamp } : l)));
-
-    setFollowups(prev => {
-      let next = prev;
-      if (followup && outcome === 'Connected') {
-        next = next.map(f => (f.id === followup.id ? { ...f, status: 'done', completed_at: stamp } : f));
-      }
-      if (form.scheduleNext && form.nextDate) {
-        next = [...next, {
-          id: Math.max(0, ...next.map(f => f.id)) + 1,
-          lead_id: lead.id,
-          caller_id: me.id,
-          due_at: `${form.nextDate}T10:00`,
-          note: form.nextNote.trim() || 'Call back',
-          status: 'pending',
-          completed_at: null,
-        }];
-      }
-      return next;
-    });
-
+      stageId: form.stageId,
+      note: form.note,
+      durationSec,
+      followupId: followup?.id ?? null,
+      next: form.scheduleNext && form.nextDate ? { date: form.nextDate, note: form.nextNote } : null,
+    };
     setHandled(prev => [...prev, lead.id]);
     setSkipped(prev => prev.filter(id => id !== lead.id));
-
-    const stageChanged = form.stageId !== lead.stage_id;
-    showToast(`${lead.customer_name}: ${outcome}${stageChanged ? ` · moved to ${stageOf(form.stageId)?.name}` : ''}${form.scheduleNext ? ' · callback booked' : ''}`);
+    try {
+      await sync.run({ type: 'log-call', call });
+      const stageChanged = form.stageId !== lead.stage_id;
+      showToast(`${lead.customer_name}: ${outcome}${stageChanged ? ` · moved to ${stageOf(form.stageId)?.name}` : ''}${form.scheduleNext ? ' · callback booked' : ''}`);
+    } catch (e) {
+      setHandled(prev => prev.filter(id => id !== lead.id)); // not saved: keep it in the queue
+      showToast(`⚠️ ${(e as Error).message}`);
+    }
   };
 
   // Call dashboard: save the call on the desk and move to the next lead.
@@ -207,6 +183,7 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
     desk:      { title: 'Call Dashboard', sub: `Work down the queue, ${firstName}. Pick an outcome to save the call and open the next one.` },
     history:   { title: 'Call History', sub: 'Every call you have logged, with outcome, duration and note.' },
     callbacks: { title: 'Call Desk',    sub: 'Your assigned leads, calls made, pending calls and callbacks in one place.' },
+    import:    { title: 'Import Call Report', sub: 'Upload your calling report (Excel, CSV or PDF). Each row becomes a call on your lead, and the head and manager see it straight away.' },
     reports:   { title: 'Reports',      sub: 'Your calling performance, and reports you can download as Excel or PDF.' },
   };
   const currentMeta = pageMeta[activePage] ?? pageMeta.desk;
@@ -218,6 +195,7 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
       items: [
         { key: 'callbacks', label: 'Call desk', count: dueCallbacks },
         { key: 'history', label: 'Call history' },
+        { key: 'import', label: 'Import call report' },
       ],
     },
     { label: 'Performance', items: [{ key: 'reports', label: 'Reports' }] },
@@ -231,7 +209,7 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
 
   return (
     <div>
-      {toastMessage && <div className="toast">✅ {toastMessage}</div>}
+      {toastMessage && <div className={`toast ${toastMessage.startsWith('⚠️') ? 'toast-error' : ''}`}>{toastMessage.startsWith('⚠️') ? toastMessage : `✅ ${toastMessage}`}</div>}
 
       <div className="app-header">
         <div className="masthead">
@@ -294,6 +272,7 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
               <div className="sub">{currentMeta.sub}</div>
             </div>
             <div className="topbar-tools">
+              <SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />
               {(activePage === 'history' || activePage === 'callbacks') && (
                 <div className="search">
                   <Search size={16} style={{ color: 'var(--ink-soft)' }} />
@@ -338,6 +317,21 @@ export default function CallingExecutiveDashboard({ user }: { user: SessionUser 
           {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
           {activePage === 'callbacks' && (
             <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} searchQuery={searchQuery} onOpen={startCallFromDesk} />
+          )}
+          {activePage === 'import' && (
+            <CallReportImport
+              leads={myLeads}
+              onImport={async calls => {
+                try {
+                  const { message } = await sync.run({ type: 'import-report', calls });
+                  showToast(message);
+                } catch (e) {
+                  showToast(`⚠️ ${(e as Error).message}`);
+                  throw e;
+                }
+              }}
+              onToast={showToast}
+            />
           )}
           {activePage === 'reports' && (
             <CeReportsView

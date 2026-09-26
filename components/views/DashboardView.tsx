@@ -5,12 +5,12 @@ import {
   VERTICALS,
   STAGES,
   TRACKER_PRODUCTS,
-  LEAD_ACTIVITIES,
-  FOLLOWUPS,
   TRACKER_SALES,
   LEAD_SOURCES,
   isWonStage,
   TrackerLead,
+  Followup,
+  LeadActivity,
   WebEnquiry,
   SalesOrder,
 } from '../../data/managerDashboard';
@@ -20,7 +20,10 @@ import HBarList from '../HBarList';
 interface DashboardViewProps {
   orders: SalesOrder[];
   leads: TrackerLead[];
-  onLeadsChange: React.Dispatch<React.SetStateAction<TrackerLead[]>>;
+  /** Shared with the telecalling dashboards (kept in sync with the server). */
+  followups: Followup[];
+  activities: LeadActivity[];
+  onReassignLead: (leadId: number, callerId: number) => void;
   enquiries: WebEnquiry[];
   onEnquiriesChange: React.Dispatch<React.SetStateAction<WebEnquiry[]>>;
   onNavigate: (page: string) => void;
@@ -37,7 +40,7 @@ const isOpen = (lead: TrackerLead) => {
 const ENQUIRY_TYPES: WebEnquiry['type'][] = ['sales', 'partnership', 'career', 'general'];
 
 
-export default function DashboardView({ orders, leads, onLeadsChange, enquiries, onEnquiriesChange, onNavigate, onToast }: DashboardViewProps) {
+export default function DashboardView({ orders, leads, followups, activities, onReassignLead, enquiries, onEnquiriesChange, onNavigate, onToast }: DashboardViewProps) {
   const webOrders = orders.filter(o => o.source === 'website');
   const [verticalId, setVerticalId] = useState<number>(VERTICALS[0].id);
 
@@ -49,8 +52,8 @@ export default function DashboardView({ orders, leads, onLeadsChange, enquiries,
     const salesToday = salesMonth.filter(s => s.sold_at === TODAY);
     const leadsMonth = leads.filter(l => l.created_at.startsWith(MONTH));
     const converted = leadsMonth.filter(l => soldLeadIds.has(l.id)).length;
-    const dueToday = FOLLOWUPS.filter(f => f.due_at.startsWith(TODAY) && f.status === 'pending').length;
-    const missedMonth = FOLLOWUPS.filter(f => f.due_at.startsWith(MONTH) && f.status === 'missed').length;
+    const dueToday = followups.filter(f => f.due_at.startsWith(TODAY) && f.status === 'pending').length;
+    const missedMonth = followups.filter(f => f.due_at.startsWith(MONTH) && f.status === 'missed').length;
     const ordersMonth = webOrders.filter(o => o.created_at.startsWith(MONTH));
     const newEnquiries = enquiries.filter(e => e.status === 'new');
     const oldestNew = Math.max(0, ...newEnquiries.map(e => daysBefore(e.created_at)));
@@ -75,11 +78,11 @@ export default function DashboardView({ orders, leads, onLeadsChange, enquiries,
     () =>
       TELECALLERS.map(t => {
         const mine = leads.filter(l => l.assigned_to === t.id);
-        const fu = FOLLOWUPS.filter(f => f.caller_id === t.id && f.due_at.startsWith(MONTH));
+        const fu = followups.filter(f => f.caller_id === t.id && f.due_at.startsWith(MONTH));
         const sales = salesMonth.filter(s => s.caller_id === t.id);
         return {
           ...t,
-          callsToday: LEAD_ACTIVITIES.filter(a => a.caller_id === t.id && a.created_at.startsWith(TODAY)).length,
+          callsToday: activities.filter(a => a.caller_id === t.id && a.created_at.startsWith(TODAY)).length,
           openLeads: mine.filter(isOpen).length,
           fuDone: fu.filter(f => f.status === 'done').length,
           fuMissed: fu.filter(f => f.status === 'missed').length,
@@ -101,7 +104,7 @@ export default function DashboardView({ orders, leads, onLeadsChange, enquiries,
 
   // 4. Needs attention
   const leadById = (id: number) => leads.find(l => l.id === id)!;
-  const overdueFollowups = FOLLOWUPS.filter(
+  const overdueFollowups = followups.filter(
     f => f.status === 'missed' || (f.status === 'pending' && dayStart(f.due_at) < dayStart(TODAY)),
   ).sort((a, b) => a.due_at.localeCompare(b.due_at));
   const overdueLeadIds = new Set(overdueFollowups.map(f => f.lead_id));
@@ -111,8 +114,7 @@ export default function DashboardView({ orders, leads, onLeadsChange, enquiries,
   const unreplied = enquiries.filter(e => e.status === 'new').sort((a, b) => a.created_at.localeCompare(b.created_at));
 
   const reassign = (leadId: number, callerId: number) => {
-    onLeadsChange(prev => prev.map(l => (l.id === leadId ? { ...l, assigned_to: callerId } : l)));
-    onToast(`${leadById(leadId).customer_name} reassigned to ${callerName(callerId)}`);
+    onReassignLead(leadId, callerId);
   };
   const markReplied = (id: number) => {
     onEnquiriesChange(prev => prev.map(e => (e.id === id ? { ...e, status: 'replied', replied_at: nowStamp() } : e)));

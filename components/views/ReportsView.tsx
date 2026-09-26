@@ -2,10 +2,10 @@ import React from 'react';
 import {
   TODAY,
   TELECALLERS,
-  LEAD_ACTIVITIES,
-  FOLLOWUPS,
   TRACKER_SALES,
   TrackerLead,
+  Followup,
+  LeadActivity,
   SalesOrder,
 } from '../../data/managerDashboard';
 import { StaffCard, Franchise, FPO, InventoryItem, Transaction } from '../../data/initialData';
@@ -15,6 +15,9 @@ import { exportTable } from '../../lib/export';
 interface ReportsViewProps {
   salesOrders: SalesOrder[];
   trackerLeads: TrackerLead[];
+  /** Shared with the telecalling dashboards (kept in sync with the server). */
+  followups: Followup[];
+  activities: LeadActivity[];
   staff: StaffCard[];
   franchises: Franchise[];
   fpos: FPO[];
@@ -26,6 +29,8 @@ interface ReportsViewProps {
 export default function ReportsView({
   salesOrders,
   trackerLeads,
+  followups,
+  activities,
   staff,
   franchises,
   fpos,
@@ -46,9 +51,9 @@ export default function ReportsView({
     const salesMonth = TRACKER_SALES.filter(s => s.sold_at.startsWith(MONTH));
     const rows = TELECALLERS.map(t => {
       const mine = trackerLeads.filter(l => l.assigned_to === t.id);
-      const fu = FOLLOWUPS.filter(f => f.caller_id === t.id && f.due_at.startsWith(MONTH));
+      const fu = followups.filter(f => f.caller_id === t.id && f.due_at.startsWith(MONTH));
       const sales = salesMonth.filter(s => s.caller_id === t.id);
-      const calls = LEAD_ACTIVITIES.filter(a => a.caller_id === t.id && a.created_at.startsWith(MONTH));
+      const calls = activities.filter(a => a.caller_id === t.id && a.created_at.startsWith(MONTH));
       return [
         t.name, t.region, t.is_active ? 'Active' : 'Inactive', mine.length, calls.length,
         fu.filter(f => f.status === 'done').length, fu.filter(f => f.status === 'missed').length,
