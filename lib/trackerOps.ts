@@ -18,6 +18,22 @@ export interface TrackerState {
   leads: TrackerLead[];
   followups: Followup[];
   activities: LeadActivity[];
+  /**
+   * When each lead was last assigned, and by whom, keyed by lead id. Kept beside the leads so the
+   * lead records stay unchanged. Leads missing here (the sample data) count as assigned when created.
+   */
+  assignments?: Record<string, Assignment>;
+}
+
+export interface Assignment {
+  at: string;
+  by: string;
+}
+
+/** When a lead was assigned to its current telecaller, and who assigned it (null if unknown). */
+export function assignmentOf(state: Pick<TrackerState, 'assignments'>, lead: TrackerLead): { at: string; by: string | null } {
+  const a = state.assignments?.[String(lead.id)];
+  return a ? { at: a.at, by: a.by } : { at: lead.created_at, by: null };
 }
 
 export type NewLeadInput = Omit<TrackerLead, 'id' | 'stage_id' | 'created_at' | 'updated_at'>;
@@ -169,6 +185,11 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
     leads: current.leads.map(l => ({ ...l })),
     followups: current.followups.map(f => ({ ...f })),
     activities: [...current.activities],
+    assignments: { ...(current.assignments ?? {}) },
+  };
+  const noteAssigned = (ids: number[]) => {
+    const at = stamp();
+    ids.forEach(id => { state.assignments![String(id)] = { at, by: actor.name }; });
   };
 
   switch (action.type) {
@@ -179,6 +200,7 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
       if (inputs.length > MAX_IMPORT) throw new TrackerError(`Import at most ${MAX_IMPORT} leads at a time.`);
       const created = createLeads(state, inputs);
       state.leads = [...created, ...state.leads];
+      noteAssigned(created.map(l => l.id));
       const people = new Set(created.map(l => l.assigned_to)).size;
       return {
         state,
@@ -194,6 +216,7 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
       if (moved.length === 0) throw new TrackerError('Those leads no longer exist.');
       const now = stamp();
       moved.forEach(l => { l.assigned_to = to.id; l.updated_at = now; });
+      noteAssigned(moved.map(l => l.id));
       // Open callbacks move with the lead.
       state.followups.forEach(f => {
         if (ids.has(f.lead_id) && f.status !== 'done') { f.caller_id = to.id; f.status = 'pending'; }
@@ -236,5 +259,6 @@ export function stateFor(state: TrackerState, actor: Actor): TrackerState {
     leads,
     followups: state.followups.filter(f => ids.has(f.lead_id)),
     activities: state.activities.filter(a => ids.has(a.lead_id)),
+    assignments: Object.fromEntries(Object.entries(state.assignments ?? {}).filter(([id]) => ids.has(Number(id)))),
   };
 }

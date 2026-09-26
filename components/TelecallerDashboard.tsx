@@ -11,6 +11,7 @@ import TeamLeads from './telecaller/TeamLeads';
 import TeamFollowups from './telecaller/TeamFollowups';
 import TeamSales from './telecaller/TeamSales';
 import StaffOnboarding from './telecaller/StaffOnboarding';
+import TelecallingExecutivesView from './views/TelecallingExecutivesView';
 import TeamComplaints from './telecaller/TeamComplaints';
 import TeamOrders from './telecaller/TeamOrders';
 import TeamInventory from './telecaller/TeamInventory';
@@ -38,6 +39,8 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
 
   const [activePage, setActivePage] = useState('overview');
   const [focusCaller, setFocusCaller] = useState<number | undefined>(undefined);
+  /** Executive open on the Executive reports page (null = the list). */
+  const [reportExec, setReportExec] = useState<number | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -81,6 +84,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     leads:      { title: 'Leads & Assignment',   sub: 'Every lead across the team: find untouched ones and move them to someone with capacity.' },
     followups:  { title: 'Team Follow-ups',      sub: 'Who owes a callback, and who is falling behind.' },
     sales:      { title: 'Team Sales',           sub: 'What the team has sold, by telecaller, product and month.' },
+    'exec-reports': { title: 'Executive Reports', sub: 'Every telecalling executive: calls, leads, follow-ups and sales. Open one for the full report, or download reports.' },
     onboarding: { title: 'Staff Onboarding',     sub: 'Add telecalling staff and create their Staff ID and temporary password.' },
     inventory:  { title: 'Stock',                sub: 'What the team can sell today, what is running out and which customers are waiting.' },
     orders:     { title: 'Orders & Tracking',    sub: 'What each customer bought and where the parcel is: packed, shipped, out for delivery, delivered.' },
@@ -100,6 +104,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
       items: [
         { key: 'leads', label: 'Leads & assignment', count: withInactive },
         { key: 'followups', label: 'Follow-ups', count: overdueCount },
+        { key: 'exec-reports', label: 'Executive reports' },
         { key: 'onboarding', label: 'Staff onboarding' },
       ],
     },
@@ -117,6 +122,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
   const handleNavigate = (page: string, callerId?: number) => {
     setActivePage(page);
     setFocusCaller(callerId);
+    if (page === 'exec-reports') setReportExec(callerId ?? null);
     setSearchQuery('');
     window.scrollTo(0, 0);
   };
@@ -214,11 +220,11 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
                 <Search size={16} style={{ color: 'var(--ink-soft)' }} />
                 <input
                   type="text"
-                  placeholder={activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'orders' ? 'Search orders by name, phone, order no., AWB…' : 'Search leads by name or phone…'}
+                  placeholder={activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'exec-reports' ? 'Search executives by name or region…' : activePage === 'orders' ? 'Search orders by name, phone, order no., AWB…' : 'Search leads by name or phone…'}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
-                    if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'inventory') {
+                    if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'inventory' && activePage !== 'exec-reports') {
                       setActivePage('leads');
                       setFocusCaller(undefined);
                     }
@@ -257,6 +263,15 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
             <TeamFollowups key={`fu-${focusCaller ?? 'all'}`} data={data} searchQuery={searchQuery} initialCaller={focusCaller} onReassign={handleReassign} onToast={showToast} />
           )}
           {activePage === 'sales' && <TeamSales data={data} onToast={showToast} />}
+          {activePage === 'exec-reports' && (
+            <TelecallingExecutivesView
+              data={data}
+              selectedId={reportExec}
+              onSelect={id => { setReportExec(id); window.scrollTo(0, 0); }}
+              searchQuery={searchQuery}
+              onToast={showToast}
+            />
+          )}
           {activePage === 'onboarding' && <StaffOnboarding onToast={showToast} />}
           {activePage === 'inventory' && <TeamInventory orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'orders' && <TeamOrders orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
