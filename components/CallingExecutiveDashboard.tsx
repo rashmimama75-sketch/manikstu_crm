@@ -330,7 +330,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           )}
           {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
           {activePage === 'callbacks' && (
-            <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} searchQuery={searchQuery} onOpen={startCallFromDesk} />
+            <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} assignments={sync.data.assignments} searchQuery={searchQuery} onOpen={startCallFromDesk} />
           )}
           {activePage === 'import' && (
             <CallReportImport

@@ -2032,3 +2032,13 @@ button.score-btn:last-child { border-right: none; }
 @media (prefers-reduced-motion: reduce) { .sync-badge.live .sync-dot { animation: none; } }
 .toast.toast-error { background: var(--rust); }
 .lead-note { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- Call desk: assigned leads sort / filter ------------------------------------------- */
+.assigned-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.sort-select { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.sort-select .filter-select { min-width: 190px; }
+.group-row td { background: var(--page-bg); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-soft); padding-top: 8px; padding-bottom: 8px; }
+tr.row-new td { background: rgba(58, 112, 48, 0.06); }
+tr.row-new td:first-child { box-shadow: inset 3px 0 0 var(--leaf); }
+.new-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--leaf); color: var(--white); font-size: 10px; font-weight: 700; letter-spacing: 0.5px; vertical-align: middle; }
+.score .num small.new-count { color: var(--leaf); font-weight: 700; }

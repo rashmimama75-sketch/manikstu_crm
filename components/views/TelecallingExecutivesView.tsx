@@ -25,7 +25,8 @@ interface Props {
 export default function TelecallingExecutivesView({ data, selectedId, onSelect, searchQuery, onToast }: Props) {
   const [region, setRegion] = useState('all');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
-  const all = useMemo(() => allExecMetrics(data, 'month'), [data]);
+  const [period, setPeriod] = useState<Period>('month');
+  const all = useMemo(() => allExecMetrics(data, period), [data, period]);
 
   const selected = TELECALLERS.find(t => t.id === selectedId);
   if (selected) return <ExecutiveDetail key={selected.id} data={data} id={selected.id} onBack={() => onSelect(null)} onToast={onToast} />;
@@ -38,6 +39,34 @@ export default function TelecallingExecutivesView({ data, selectedId, onSelect, 
   );
   const regions = Array.from(new Set(TELECALLERS.map(t => t.region)));
 
+  /** One row per executive, for the chosen period. */
+  const teamReport = async (format: ExportFormat) => {
+    if (rows.length === 0) { onToast('No executives to include'); return; }
+    try {
+      await exportTable(format, {
+        filename: `executive-reports-${period}-${TODAY}`,
+        title: 'Telecalling executive reports',
+        subtitle: `${PERIOD_LABEL[period]} · ${rows.length} executives${region === 'all' ? '' : ` · ${region}`} · exported ${shortDate(TODAY)}`,
+        columns: [
+          { header: 'Executive', width: 18 }, { header: 'Region', width: 12 }, { header: 'Status', width: 9 },
+          { header: 'Calls', width: 7 }, { header: 'Connected', width: 9 }, { header: 'Connect %', width: 9 }, { header: 'Avg talk', width: 9 },
+          { header: 'Leads called', width: 9 }, { header: 'Open leads', width: 9 }, { header: 'Untouched 3+ days', width: 10 },
+          { header: 'Overdue follow-ups', width: 10 }, { header: 'Follow-ups kept %', width: 10 },
+          { header: 'Sales', width: 7 }, { header: 'Revenue', width: 11, money: true }, { header: 'Conversion %', width: 10 }, { header: 'Last call', width: 14 },
+        ],
+        rows: rows.map(m => [
+          m.t.name, m.t.region, m.t.is_active ? 'Active' : 'Inactive',
+          m.calls, m.connected, m.connectRate, fmtDuration(m.avgTalkSec),
+          m.leadsWorked, m.openLeads, m.staleLeads, m.overdue, m.keptRate === null ? '—' : m.keptRate,
+          m.sales, m.revenue, m.conversion, m.lastCall ? shortDateTime(m.lastCall) : 'Never',
+        ]),
+      });
+      onToast(`Executive reports exported to ${format === 'excel' ? 'Excel' : 'PDF'}`);
+    } catch {
+      onToast('Export failed. Please try again.');
+    }
+  };
+
   return (
     <>
       <div className="page-toolbar">
@@ -49,10 +78,14 @@ export default function TelecallingExecutivesView({ data, selectedId, onSelect, 
           ))}
         </div>
         <div className="toolbar-actions">
+          <select className="filter-select" value={period} onChange={e => setPeriod(e.target.value as Period)} aria-label="Period">
+            {(['today', '7d', 'month'] as Period[]).map(p => <option key={p} value={p}>{PERIOD_LABEL[p]}</option>)}
+          </select>
           <select className="filter-select" value={region} onChange={e => setRegion(e.target.value)} aria-label="Region">
             <option value="all">All regions</option>
             {regions.map(r => <option key={r}>{r}</option>)}
           </select>
+          <ExportMenu onExport={teamReport} label="Download all" />
         </div>
       </div>
 
@@ -77,7 +110,7 @@ export default function TelecallingExecutivesView({ data, selectedId, onSelect, 
               <div className="exec-stats">
                 <div><strong>{m.openLeads}</strong> open leads</div>
                 <div className={m.overdue ? 'text-warn' : undefined}><strong>{m.overdue}</strong> overdue follow-ups</div>
-                <div><strong>{rupeesShort(m.revenue)}</strong> this month · {m.sales} sales</div>
+                <div><strong>{rupeesShort(m.revenue)}</strong> {PERIOD_LABEL[period].toLowerCase()} · {m.sales} sales</div>
                 <div><strong>{m.conversion}%</strong> conversion</div>
                 <div className={m.t.is_active && m.callsToday === 0 ? 'text-warn' : 'loc'}>{m.lastCall ? `Last call ${ago(m.lastCall)}, ${time12(m.lastCall)}` : 'No calls yet'}</div>
               </div>
@@ -86,7 +119,7 @@ export default function TelecallingExecutivesView({ data, selectedId, onSelect, 
           </button>
         ))}
       </div>
-      <div className="panel-note">Ring = calls today against the daily target of {CALL_TARGET_DAILY}. Revenue and sales are for this month.</div>
+      <div className="panel-note">Ring = calls today against the daily target of {CALL_TARGET_DAILY}. Revenue and sales are for {PERIOD_LABEL[period].toLowerCase()}. &quot;Download all&quot; gives one row per executive; open an executive for their full report.</div>
     </>
   );
 }
@@ -321,7 +354,7 @@ function ExecutiveDetail({ data, id, onBack, onToast }: { data: TeamData; id: nu
             </tbody>
           </table>
         </div>
-        <div className="panel-note">View-only. Sample data: call outcomes, talk time and daily targets aren&apos;t in the backend yet.</div>
+        <div className="panel-note">Call outcomes, talk time and daily targets are sample values until the backend records them.</div>
       </div>
     </>
   );
