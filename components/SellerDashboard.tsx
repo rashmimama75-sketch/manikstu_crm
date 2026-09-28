@@ -59,6 +59,12 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     const order = orders.find(o => o.id === orderId);
     setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, status: to, status_history: [...o.status_history, { status: to, at }] } : o)));
     if (order) showToast(`${order.order_number} marked ${ORDER_STATUS_LABEL[to].toLowerCase()}`);
+    // Once shipped, the seller's next job is tracking the delivery, so take them straight there.
+    if (to === 'shipped') {
+      setActivePage('tracking');
+      setSearchQuery('');
+      window.scrollTo(0, 0);
+    }
   };
 
   // Confirm order: the seller types in an order/reference no. and a tracking no. by hand.
