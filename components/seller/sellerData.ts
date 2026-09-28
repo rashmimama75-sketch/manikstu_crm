@@ -2,7 +2,8 @@ import type { CatalogProduct } from '../../data/catalogProducts';
 import type { OrderItem, OrderStatus, SalesOrder } from '../../data/managerDashboard';
 import { TODAY } from '../../data/today';
 import type { Seller } from '../../data/sellers';
-import { daysBefore } from '../../lib/format';
+import { daysBefore, nowStamp } from '../../lib/format';
+import { TrackEvent, TrackStage, Tracking, trackingFor } from '../telecaller/orderTracking';
 
 /** One order as a seller sees it: only their own items, and their share of the money. */
 export interface SellerOrder {
@@ -16,11 +17,74 @@ export interface SellerOrder {
   payout: PayoutStatus;
 }
 
-/** Order/tracking reference a seller types in by hand when confirming an order (sample data, not backed by the API yet). */
+/**
+ * Order/tracking reference a seller types in by hand when confirming an order, plus the
+ * fulfilment steps they've clicked through since (sample data, not backed by the API yet).
+ * packedAt and outForDeliveryAt exist only once the seller has marked them - the app never
+ * guesses these from elapsed time.
+ */
 export interface ShipmentDetails {
   orderNo: string;
   trackingNo: string;
   confirmedAt: string;
+  packedAt?: string;
+  outForDeliveryAt?: string;
+}
+
+export type ManualStageAction = 'packed' | 'shipped' | 'out_for_delivery' | 'delivered';
+
+/** The next fulfilment step the seller can take by hand, from confirmed through delivered. */
+export function nextManualStep(order: SalesOrder, details: ShipmentDetails | undefined): { action: ManualStageAction; label: string } | null {
+  if (order.status === 'confirmed') {
+    return details?.packedAt ? { action: 'shipped', label: 'Mark shipped' } : { action: 'packed', label: 'Mark packed' };
+  }
+  if (order.status === 'shipped') {
+    return details?.outForDeliveryAt ? { action: 'delivered', label: 'Mark delivered' } : { action: 'out_for_delivery', label: 'Mark out for delivery' };
+  }
+  return null;
+}
+
+const historyAt = (o: SalesOrder, s: OrderStatus) => o.status_history.find(h => h.status === s)?.at ?? null;
+
+/**
+ * Delivery tracking driven entirely by the seller's own actions: placed and confirmed come
+ * from real order data, and packed / shipped / out-for-delivery / delivered only appear once
+ * the seller has actually clicked that step - never guessed from a timer. Courier, AWB and the
+ * expected delivery date are still filled in once shipped (the seller doesn't pick a courier
+ * by hand), reusing the same values the simulated trackingFor derives from the real ship date.
+ */
+export function sellerTrackingFor(o: SalesOrder, details: ShipmentDetails | undefined, now = nowStamp()): Tracking {
+  const base = trackingFor(o, now);
+  if (o.status === 'cancelled') return base;
+
+  const confirmedAt = historyAt(o, 'confirmed');
+  const packedAt = details?.packedAt ?? null;
+  const shippedAt = historyAt(o, 'shipped');
+  const outAt = details?.outForDeliveryAt ?? null;
+  const deliveredAt = historyAt(o, 'delivered');
+
+  const stage: TrackStage = deliveredAt ? 'delivered' : outAt ? 'out_for_delivery' : shippedAt ? 'shipped' : packedAt ? 'packed' : confirmedAt ? 'confirmed' : 'placed';
+
+  const events: TrackEvent[] = [
+    { stage: 'placed', at: o.created_at, text: o.source === 'website' ? 'Order placed on the website' : 'Order taken on a call', place: o.source === 'website' ? 'Website' : 'Telecalling team' },
+  ];
+  if (confirmedAt) events.push({ stage: 'confirmed', at: confirmedAt, text: 'Order confirmed by the seller', place: 'Seller' });
+  if (packedAt) events.push({ stage: 'packed', at: packedAt, text: `Packed: ${o.items.map(i => `${i.product_name} × ${i.quantity}`).join(', ')}`, place: 'Seller' });
+  if (shippedAt) events.push({ stage: 'shipped', at: shippedAt, text: `Handed to ${base.courier} · AWB ${base.awb}`, place: 'Seller' });
+  if (outAt) events.push({ stage: 'out_for_delivery', at: outAt, text: 'Out for delivery', place: o.city });
+  if (deliveredAt) {
+    events.push({
+      stage: 'delivered',
+      at: deliveredAt,
+      text: `Delivered to ${o.customer_name}${o.payment_method === 'COD' ? (o.payment_status === 'paid' ? ' · cash collected' : ' · cash not collected yet') : ''}`,
+      place: o.city,
+    });
+  }
+
+  const expected_at = stage === 'delivered' ? null : base.expected_at;
+  const delayed = (stage === 'shipped' || stage === 'out_for_delivery') && !!expected_at && expected_at < now;
+
+  return { stage, courier: base.courier, awb: base.awb, expected_at, expectedIsEstimate: !shippedAt, delayed, events };
 }
 
 export type PayoutStatus = 'Paid out' | 'Due' | 'On hold' | 'None';
@@ -39,12 +103,6 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   shipped: 'Shipped',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
-};
-
-/** The next step a seller can take on an order, if any. */
-export const NEXT_STEP: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
-  pending: { to: 'confirmed', label: 'Confirm' },
-  confirmed: { to: 'shipped', label: 'Mark shipped' },
 };
 
 /**

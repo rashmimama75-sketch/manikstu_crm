@@ -18,8 +18,7 @@ import type { CatalogProduct } from '../data/catalogProducts';
 import type { OrderStatus, SalesOrder } from '../data/managerDashboard';
 import type { Seller } from '../data/sellers';
 import { nowStamp } from '../lib/format';
-import { NEXT_STEP, ORDER_STATUS_LABEL, ShipmentDetails, sellerOrders } from './seller/sellerData';
-import { trackingFor } from './telecaller/orderTracking';
+import { ManualStageAction, ORDER_STATUS_LABEL, ShipmentDetails, nextManualStep, sellerOrders, sellerTrackingFor } from './seller/sellerData';
 import type { SessionUser } from '../lib/session';
 
 interface Props {
@@ -59,10 +58,10 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     const order = orders.find(o => o.id === orderId);
     setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, status: to, status_history: [...o.status_history, { status: to, at }] } : o)));
     if (order) showToast(`${order.order_number} marked ${ORDER_STATUS_LABEL[to].toLowerCase()}`);
-    // Once shipped, the seller's next job is tracking the delivery, so take them straight there
-    // and filter to this order — a fresh shipment isn't "late" yet, so it sorts near the bottom
-    // of the default list and would otherwise be invisible without this.
-    if (to === 'shipped') {
+    // Once shipped or delivered, the seller's next job is tracking the delivery, so take them
+    // straight there and filter to this order — a fresh shipment isn't "late" yet, so it sorts
+    // near the bottom of the default list and would otherwise be invisible without this.
+    if (to === 'shipped' || to === 'delivered') {
       setActivePage('tracking');
       setSearchQuery(order?.order_number ?? '');
       window.scrollTo(0, 0);
@@ -92,6 +91,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     setShipmentDetails(prev => ({
       ...prev,
       [confirmOrderId]: {
+        ...prev[confirmOrderId],
         orderNo: confirmOrderNo.trim(),
         trackingNo: confirmTrackingNo.trim(),
         confirmedAt: prev[confirmOrderId]?.confirmedAt ?? nowStamp(),
@@ -103,6 +103,25 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
       showToast(`${confirmOrder?.order_number} tracking details updated`);
     }
     closeConfirmCard();
+  };
+
+  /** The seller clicking Mark packed / shipped / out for delivery / delivered, wherever that button lives. */
+  const advanceManualStage = (orderId: number, action: ManualStageAction) => {
+    if (action === 'shipped' || action === 'delivered') {
+      advanceOrder(orderId, action);
+      return;
+    }
+    const order = orders.find(o => o.id === orderId);
+    const field = action === 'packed' ? 'packedAt' : 'outForDeliveryAt';
+    setShipmentDetails(prev => {
+      const existing = prev[orderId];
+      if (!existing) return prev;
+      return { ...prev, [orderId]: { ...existing, [field]: nowStamp() } };
+    });
+    if (order) showToast(`${order.order_number} marked ${action === 'packed' ? 'packed' : 'out for delivery'}`);
+    setActivePage('tracking');
+    setSearchQuery(order?.order_number ?? '');
+    window.scrollTo(0, 0);
   };
 
   // Edit product
@@ -152,7 +171,10 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
   const toShip = myOrders.filter(o => o.order.status === 'confirmed').length;
   const lowStock = myProducts.filter(p => p.is_active && p.stock_quantity <= 20).length;
   const due = myOrders.filter(o => o.payout === 'Due').length;
-  const lateShipments = useMemo(() => myOrders.filter(o => trackingFor(o.order).delayed).length, [myOrders]);
+  const lateShipments = useMemo(
+    () => myOrders.filter(o => sellerTrackingFor(o.order, shipmentDetails[o.order.id]).delayed).length,
+    [myOrders, shipmentDetails],
+  );
 
   const pageMeta: Record<string, { title: string; sub: string }> = {
     overview: { title: 'Seller Dashboard', sub: `Your sales on Manikstu, ${user.name.split(' ')[0]}: orders to ship, stock and earnings.` },
@@ -280,7 +302,14 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
           </div>
 
           {activePage === 'overview' && (
-            <SellerOverview orders={myOrders} products={myProducts} onNavigate={handleNavigate} onAdvance={advanceOrder} onOpenConfirm={openConfirmCard} />
+            <SellerOverview
+              orders={myOrders}
+              products={myProducts}
+              onNavigate={handleNavigate}
+              shipmentDetails={shipmentDetails}
+              onAdvanceStage={advanceManualStage}
+              onOpenConfirm={openConfirmCard}
+            />
           )}
           {activePage === 'orders' && (
             <SellerOrders
@@ -297,7 +326,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               orders={myOrders}
               searchQuery={searchQuery}
               shipmentDetails={shipmentDetails}
-              onAdvance={advanceOrder}
+              onAdvanceStage={advanceManualStage}
               onOpenConfirm={openConfirmCard}
             />
           )}
@@ -374,15 +403,18 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-secondary" onClick={closeConfirmCard}>Cancel</button>
-              {confirmOrder.status === 'confirmed' && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => { advanceOrder(confirmOrder.id, NEXT_STEP.confirmed!.to); closeConfirmCard(); }}
-                >
-                  {NEXT_STEP.confirmed!.label}
-                </button>
-              )}
+              {(() => {
+                const step = nextManualStep(confirmOrder, shipmentDetails[confirmOrder.id]);
+                return step && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => { advanceManualStage(confirmOrder.id, step.action); closeConfirmCard(); }}
+                  >
+                    {step.label}
+                  </button>
+                );
+              })()}
               <button type="submit" className="btn-primary">{confirmOrder.status === 'pending' ? 'Confirm order' : 'Save'}</button>
             </div>
           </form>

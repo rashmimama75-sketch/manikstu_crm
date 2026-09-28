@@ -1,11 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
-import type { OrderStatus } from '../../data/managerDashboard';
 import { TODAY } from '../../data/today';
 import { daysBefore, rupees, shortDate, shortDateTime } from '../../lib/format';
 import Modal from '../Modal';
-import { STAGE_CHIP, STAGE_FLOW, STAGE_LABEL, TrackStage, Tracking, stageIndex, trackingFor } from '../telecaller/orderTracking';
-import { NEXT_STEP, SellerOrder, ShipmentDetails } from './sellerData';
+import { STAGE_CHIP, STAGE_FLOW, STAGE_LABEL, TrackStage, Tracking, stageIndex } from '../telecaller/orderTracking';
+import { ManualStageAction, SellerOrder, ShipmentDetails, nextManualStep, sellerTrackingFor } from './sellerData';
 
 type Tab = 'confirmed' | 'active' | 'late' | 'delivered' | 'cancelled' | 'all';
 const TABS: { key: Tab; label: string }[] = [
@@ -42,16 +41,19 @@ interface Props {
   orders: SellerOrder[];
   searchQuery: string;
   shipmentDetails: Record<number, ShipmentDetails>;
-  onAdvance: (orderId: number, to: OrderStatus) => void;
+  onAdvanceStage: (orderId: number, action: ManualStageAction) => void;
   onOpenConfirm: (orderId: number) => void;
 }
 
-export default function SellerTracking({ orders, searchQuery, shipmentDetails, onAdvance, onOpenConfirm }: Props) {
+export default function SellerTracking({ orders, searchQuery, shipmentDetails, onAdvanceStage, onOpenConfirm }: Props) {
   const [tab, setTab] = useState<Tab>('active');
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
 
-  const tracked = useMemo(() => orders.map(o => ({ o, t: trackingFor(o.order) })), [orders]);
+  const tracked = useMemo(
+    () => orders.map(o => ({ o, t: sellerTrackingFor(o.order, shipmentDetails[o.order.id]) })),
+    [orders, shipmentDetails],
+  );
   const count = (k: Tab) => tracked.filter(x => inTab(x.o, x.t, k)).length;
 
   const q = searchQuery.trim().toLowerCase();
@@ -68,10 +70,12 @@ export default function SellerTracking({ orders, searchQuery, shipmentDetails, o
   const deliveredWeek = tracked.filter(x => x.t.stage === 'delivered' && daysBefore(lastAt(x.t, 'delivered') ?? '2000-01-01') < 7).length;
   const open = tracked.find(x => x.o.order.id === openId);
 
-  // Ship from right here: move it into "On the way" too, or it'd vanish from "Ready to ship" with nothing to show for it.
-  const shipOrder = (orderId: number) => {
-    onAdvance(orderId, NEXT_STEP.confirmed!.to);
-    setTab('active');
+  // Packed and out-for-delivery don't change which tab an order sits in, but shipped and
+  // delivered do — switch tabs too, or the row would vanish here with nothing to show for it.
+  const runStep = (orderId: number, action: ManualStageAction) => {
+    onAdvanceStage(orderId, action);
+    if (action === 'shipped') setTab('active');
+    if (action === 'delivered') setTab('delivered');
   };
 
   return (
@@ -104,34 +108,37 @@ export default function SellerTracking({ orders, searchQuery, shipmentDetails, o
               {shown.length === 0 && (
                 <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '24px 0' }}>No shipments here.</td></tr>
               )}
-              {shown.map(({ o, t }) => (
-                <tr key={o.order.id}>
-                  <td className="cust">{o.order.order_number}<div className="loc">{shortDate(o.order.created_at)}</div></td>
-                  <td>{o.order.customer_name}<div className="loc">{o.order.city}, {o.order.pincode}</div></td>
-                  <td>
-                    {o.items[0].product_name} × {o.items[0].quantity}
-                    {o.items.length > 1 && <div className="loc">+ {o.items.length - 1} more</div>}
-                  </td>
-                  <td>
-                    <TrackBar t={t} />
-                    <div className="track-caption">
-                      <span className={`chip ${t.delayed ? 'pending' : STAGE_CHIP[t.stage]}`}>{STAGE_LABEL[t.stage]}{t.delayed ? ' · late' : ''}</span>
-                      {t.expected_at && <span className={`loc ${t.delayed ? 'text-warn' : ''}`}>{t.expectedIsEstimate ? 'est. ' : 'by '}{shortDate(t.expected_at)}</span>}
-                    </div>
-                  </td>
-                  <td>{t.courier ? <>{t.courier}<div className="loc">{t.awb}</div></> : <span className="loc">Not shipped yet</span>}</td>
-                  <td className="track-action">
-                    <div className="row-actions">
-                      {o.order.status === 'confirmed' && (
-                        <button className="btn-primary btn-small" onClick={() => shipOrder(o.order.id)}>{NEXT_STEP.confirmed!.label}</button>
-                      )}
-                      <button className="icon-btn eye-btn" title="Track delivery" aria-label={`Track delivery of ${o.order.order_number}`} onClick={() => setOpenId(o.order.id)}>
-                        <Eye size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {shown.map(({ o, t }) => {
+                const step = nextManualStep(o.order, shipmentDetails[o.order.id]);
+                return (
+                  <tr key={o.order.id}>
+                    <td className="cust">{o.order.order_number}<div className="loc">{shortDate(o.order.created_at)}</div></td>
+                    <td>{o.order.customer_name}<div className="loc">{o.order.city}, {o.order.pincode}</div></td>
+                    <td>
+                      {o.items[0].product_name} × {o.items[0].quantity}
+                      {o.items.length > 1 && <div className="loc">+ {o.items.length - 1} more</div>}
+                    </td>
+                    <td>
+                      <TrackBar t={t} />
+                      <div className="track-caption">
+                        <span className={`chip ${t.delayed ? 'pending' : STAGE_CHIP[t.stage]}`}>{STAGE_LABEL[t.stage]}{t.delayed ? ' · late' : ''}</span>
+                        {t.expected_at && <span className={`loc ${t.delayed ? 'text-warn' : ''}`}>{t.expectedIsEstimate ? 'est. ' : 'by '}{shortDate(t.expected_at)}</span>}
+                      </div>
+                    </td>
+                    <td>{t.courier ? <>{t.courier}<div className="loc">{t.awb}</div></> : <span className="loc">Not shipped yet</span>}</td>
+                    <td className="track-action">
+                      <div className="row-actions">
+                        {step && (
+                          <button className="btn-primary btn-small" onClick={() => runStep(o.order.id, step.action)}>{step.label}</button>
+                        )}
+                        <button className="icon-btn eye-btn" title="Track delivery" aria-label={`Track delivery of ${o.order.order_number}`} onClick={() => setOpenId(o.order.id)}>
+                          <Eye size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -178,13 +185,16 @@ export default function SellerTracking({ orders, searchQuery, shipmentDetails, o
                 </button>
               </section>
 
-              {o.order.status === 'confirmed' && (
-                <section className="od-section">
-                  <button className="btn-primary btn-small" onClick={() => { shipOrder(o.order.id); setOpenId(null); }}>
-                    {NEXT_STEP.confirmed!.label}
-                  </button>
-                </section>
-              )}
+              {(() => {
+                const step = nextManualStep(o.order, shipmentDetails[o.order.id]);
+                return step && (
+                  <section className="od-section">
+                    <button className="btn-primary btn-small" onClick={() => { runStep(o.order.id, step.action); setOpenId(null); }}>
+                      {step.label}
+                    </button>
+                  </section>
+                );
+              })()}
 
               {t.stage !== 'cancelled' && (
                 <section className="od-section">
