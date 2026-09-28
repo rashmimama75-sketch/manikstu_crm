@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Mail, MessageCircle, Phone, X } from 'lucide-react';
+import { Mail, MessageCircle, Phone, Upload, X } from 'lucide-react';
 import {
   TODAY,
   TELECALLERS,
@@ -15,6 +15,8 @@ import { MONTH, ORDER_CHIP, ago, daysBefore, nowStamp, rupees, shortDate, shortD
 import { ExportFormat, exportTable } from '../../lib/export';
 import ExportMenu from '../ExportMenu';
 import AssignEnquiryModal from './AssignEnquiryModal';
+import ImportEnquiries from './ImportEnquiries';
+import type { NewEnquiryData } from '../../lib/trackerOps';
 import { stageName } from '../telecaller/tcData';
 
 interface EnquiriesViewProps {
@@ -31,6 +33,8 @@ interface EnquiriesViewProps {
   onAssignToCaller?: (enquiries: WebEnquiry[], callerId: number, verticalId: number | 'auto') => Promise<boolean>;
   /** Calls (shared data), for the assign picker's hints. */
   activities?: LeadActivity[];
+  /** Telecalling head: import enquiries from Excel / CSV / PDF (Import button next to Export). */
+  onImportEnquiries?: (enquiries: NewEnquiryData[], assignSalesTo: number | null) => Promise<boolean>;
   /** Career enquiries → User onboarding (manager only). */
   onMoveToOnboarding?: (enquiry: WebEnquiry) => void;
   onToast: (message: string) => void;
@@ -67,6 +71,7 @@ export default function EnquiriesView({
   onConvertToLead,
   onAssignToCaller,
   activities = [],
+  onImportEnquiries,
   onMoveToOnboarding,
   onToast,
   initialQuery,
@@ -86,6 +91,7 @@ export default function EnquiriesView({
   const canAssign = !!onAssignToCaller;
   /** Enquiries being assigned to a caller (null = picker closed). */
   const [assignIds, setAssignIds] = useState<number[] | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   /** The lead an enquiry became: linked by id, or (assign mode) the lead with the same phone number. */
   const leadFor = (e: WebEnquiry) =>
@@ -286,6 +292,9 @@ export default function EnquiriesView({
           ))}
         </div>
         <div className="toolbar-actions">
+          {onImportEnquiries && (
+            <button className="btn-secondary import-btn" onClick={() => setImportOpen(true)}><Upload size={15} /> Import</button>
+          )}
           <ExportMenu onExport={format => exportRows(filtered, format, 'current filters')} />
         </div>
       </div>
@@ -581,6 +590,9 @@ export default function EnquiriesView({
           }}
           onClose={() => setAssignIds(null)}
         />
+      )}
+      {importOpen && onImportEnquiries && (
+        <ImportEnquiries existing={enquiries} onImport={onImportEnquiries} onClose={() => setImportOpen(false)} />
       )}
     </>
   );
