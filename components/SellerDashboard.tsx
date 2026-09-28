@@ -16,7 +16,7 @@ import type { CatalogProduct } from '../data/catalogProducts';
 import type { OrderStatus, SalesOrder } from '../data/managerDashboard';
 import type { Seller } from '../data/sellers';
 import { nowStamp } from '../lib/format';
-import { ORDER_STATUS_LABEL, sellerOrders } from './seller/sellerData';
+import { NEXT_STEP, ORDER_STATUS_LABEL, ShipmentDetails, sellerOrders } from './seller/sellerData';
 import { trackingFor } from './telecaller/orderTracking';
 import type { SessionUser } from '../lib/session';
 
@@ -57,6 +57,42 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     const order = orders.find(o => o.id === orderId);
     setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, status: to, status_history: [...o.status_history, { status: to, at }] } : o)));
     if (order) showToast(`${order.order_number} marked ${ORDER_STATUS_LABEL[to].toLowerCase()}`);
+  };
+
+  // Confirm order: the seller types in an order/reference no. and a tracking no. by hand.
+  // Once saved, the row switches from "Confirm" to "View" (this same card, read/editable).
+  const [shipmentDetails, setShipmentDetails] = useState<Record<number, ShipmentDetails>>({});
+  const [confirmOrderId, setConfirmOrderId] = useState<number | null>(null);
+  const [confirmOrderNo, setConfirmOrderNo] = useState('');
+  const [confirmTrackingNo, setConfirmTrackingNo] = useState('');
+  const confirmOrder = orders.find(o => o.id === confirmOrderId) ?? null;
+
+  const openConfirmCard = (orderId: number) => {
+    const existing = shipmentDetails[orderId];
+    setConfirmOrderId(orderId);
+    setConfirmOrderNo(existing?.orderNo ?? '');
+    setConfirmTrackingNo(existing?.trackingNo ?? '');
+  };
+  const closeConfirmCard = () => setConfirmOrderId(null);
+
+  const saveConfirmCard = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (confirmOrderId === null || !confirmOrderNo.trim() || !confirmTrackingNo.trim()) return;
+    const isFirstTime = confirmOrder?.status === 'pending';
+    setShipmentDetails(prev => ({
+      ...prev,
+      [confirmOrderId]: {
+        orderNo: confirmOrderNo.trim(),
+        trackingNo: confirmTrackingNo.trim(),
+        confirmedAt: prev[confirmOrderId]?.confirmedAt ?? nowStamp(),
+      },
+    }));
+    if (isFirstTime) {
+      advanceOrder(confirmOrderId, 'confirmed');
+    } else {
+      showToast(`${confirmOrder?.order_number} tracking details updated`);
+    }
+    closeConfirmCard();
   };
 
   // Edit product
@@ -207,9 +243,18 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
           </div>
 
           {activePage === 'overview' && (
-            <SellerOverview orders={myOrders} products={myProducts} onNavigate={handleNavigate} onAdvance={advanceOrder} />
+            <SellerOverview orders={myOrders} products={myProducts} onNavigate={handleNavigate} onAdvance={advanceOrder} onOpenConfirm={openConfirmCard} />
           )}
-          {activePage === 'orders' && <SellerOrders orders={myOrders} mixedOrderIds={mixedOrderIds} searchQuery={searchQuery} onAdvance={advanceOrder} />}
+          {activePage === 'orders' && (
+            <SellerOrders
+              orders={myOrders}
+              mixedOrderIds={mixedOrderIds}
+              searchQuery={searchQuery}
+              onAdvance={advanceOrder}
+              shipmentDetails={shipmentDetails}
+              onOpenConfirm={openConfirmCard}
+            />
+          )}
           {activePage === 'products' && <SellerProducts products={myProducts} orders={myOrders} searchQuery={searchQuery} onEdit={openEdit} />}
           {activePage === 'tracking' && <SellerTracking orders={myOrders} searchQuery={searchQuery} />}
           {activePage === 'payouts' && <SellerPayouts orders={myOrders} seller={seller} />}
@@ -242,6 +287,58 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
             <div className="modal-footer">
               <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button type="submit" className="btn-primary">Save</button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={confirmOrder !== null}
+        onClose={closeConfirmCard}
+        title={confirmOrder ? `${confirmOrder.status === 'pending' ? 'Confirm order' : 'Order details'} · ${confirmOrder.order_number}` : ''}
+        closeOnBackdrop={false}
+      >
+        {confirmOrder && (
+          <form onSubmit={saveConfirmCard}>
+            <p className="loc" style={{ marginBottom: 14 }}>
+              {confirmOrder.status === 'pending'
+                ? 'Add your order reference and courier tracking number to confirm this order.'
+                : 'Your saved order reference and tracking number for this order.'}
+            </p>
+            <div className="form-group">
+              <label htmlFor="sc-order-no">Order No.</label>
+              <input
+                id="sc-order-no"
+                type="text"
+                required
+                placeholder="Your reference / invoice number"
+                value={confirmOrderNo}
+                onChange={e => setConfirmOrderNo(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="sc-tracking-no">Tracking No.</label>
+              <input
+                id="sc-tracking-no"
+                type="text"
+                required
+                placeholder="Courier tracking / AWB number"
+                value={confirmTrackingNo}
+                onChange={e => setConfirmTrackingNo(e.target.value)}
+              />
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-secondary" onClick={closeConfirmCard}>Cancel</button>
+              {confirmOrder.status === 'confirmed' && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => { advanceOrder(confirmOrder.id, NEXT_STEP.confirmed!.to); closeConfirmCard(); }}
+                >
+                  {NEXT_STEP.confirmed!.label}
+                </button>
+              )}
+              <button type="submit" className="btn-primary">{confirmOrder.status === 'pending' ? 'Confirm order' : 'Save'}</button>
             </div>
           </form>
         )}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { OrderStatus } from '../../data/managerDashboard';
 import { ORDER_CHIP, rupees, shortDateTime } from '../../lib/format';
-import { NEXT_STEP, ORDER_STATUS_LABEL, SellerOrder } from './sellerData';
+import { NEXT_STEP, ORDER_STATUS_LABEL, SellerOrder, ShipmentDetails } from './sellerData';
 
 type Tab = 'all' | OrderStatus;
 const TABS: Tab[] = ['all', 'pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
@@ -13,9 +13,13 @@ interface Props {
   mixedOrderIds: number[];
   searchQuery: string;
   onAdvance: (orderId: number, to: OrderStatus) => void;
+  /** Order No. / Tracking No. the seller typed in when confirming, keyed by order id. */
+  shipmentDetails: Record<number, ShipmentDetails>;
+  /** Opens the confirm-order / view-details card for one order. */
+  onOpenConfirm: (orderId: number) => void;
 }
 
-export default function SellerOrders({ orders, mixedOrderIds, searchQuery, onAdvance }: Props) {
+export default function SellerOrders({ orders, mixedOrderIds, searchQuery, onAdvance, shipmentDetails, onOpenConfirm }: Props) {
   const [tab, setTab] = useState<Tab>('all');
   const [page, setPage] = useState(0);
   const count = (t: Tab) => (t === 'all' ? orders.length : orders.filter(o => o.order.status === t).length);
@@ -52,7 +56,7 @@ export default function SellerOrders({ orders, mixedOrderIds, searchQuery, onAdv
                 <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '24px 0' }}>No orders match.</td></tr>
               )}
               {shown.map(o => {
-                const step = NEXT_STEP[o.order.status];
+                const hasDetails = !!shipmentDetails[o.order.id];
                 return (
                   <tr key={o.order.id}>
                     <td className="cust">{o.order.order_number}<div className="loc">{o.order.source === 'website' ? 'Website' : 'Telecaller'}</div></td>
@@ -65,7 +69,22 @@ export default function SellerOrders({ orders, mixedOrderIds, searchQuery, onAdv
                     <td className="num-col strong">{rupees(o.gross)}</td>
                     <td>{o.order.payment_method}<div className="loc">{o.order.payment_status}</div></td>
                     <td><span className={`chip ${ORDER_CHIP[o.order.status]}`}>{ORDER_STATUS_LABEL[o.order.status]}</span></td>
-                    <td>{step && <button className="btn-primary btn-small" onClick={() => onAdvance(o.order.id, step.to)}>{step.label}</button>}</td>
+                    <td>
+                      <div className="row-actions">
+                        {o.order.status === 'pending' && (
+                          <button className="btn-primary btn-small" onClick={() => onOpenConfirm(o.order.id)}>Confirm</button>
+                        )}
+                        {o.order.status === 'confirmed' && (
+                          <>
+                            <button className="btn-secondary btn-small" onClick={() => onOpenConfirm(o.order.id)}>View</button>
+                            <button className="btn-primary btn-small" onClick={() => onAdvance(o.order.id, NEXT_STEP.confirmed!.to)}>{NEXT_STEP.confirmed!.label}</button>
+                          </>
+                        )}
+                        {(o.order.status === 'shipped' || o.order.status === 'delivered') && hasDetails && (
+                          <button className="btn-secondary btn-small" onClick={() => onOpenConfirm(o.order.id)}>View</button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
