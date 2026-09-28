@@ -22,20 +22,26 @@ export function useTracker(initial: TrackerState): TrackerSync {
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const [offline, setOffline] = useState(false);
   const version = useRef(initial.version);
+  /** Goes up whenever a change starts or finishes saving. */
+  const saves = useRef(0);
 
-  const accept = useCallback((state: TrackerState) => {
-    // Ignore a slower, older response arriving after a newer one.
-    if (state.version < version.current) return;
+  /**
+   * Ignore a slower, older response arriving after a newer one. A refresh that didn't overlap any save
+   * is the server's current data, so it's taken even if older (the shared data was reset).
+   */
+  const accept = useCallback((state: TrackerState, cleanRefresh = false) => {
+    if (state.version < version.current && !cleanRefresh) return;
     version.current = state.version;
     setData(state);
   }, []);
 
   const refresh = useCallback(async () => {
+    const savesAtStart = saves.current;
     try {
       const res = await fetch(`/api/tracker?since=${version.current}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(String(res.status));
       const body = await res.json();
-      if (body.state) accept(body.state);
+      if (body.state) accept(body.state, saves.current === savesAtStart);
       setSyncedAt(new Date());
       setOffline(false);
     } catch {
@@ -58,6 +64,7 @@ export function useTracker(initial: TrackerState): TrackerSync {
 
   const run = useCallback(async (action: TrackerAction) => {
     let res: Response;
+    saves.current++;
     try {
       res = await fetch('/api/tracker', {
         method: 'POST',
@@ -65,8 +72,10 @@ export function useTracker(initial: TrackerState): TrackerSync {
         body: JSON.stringify({ action }),
       });
     } catch {
+      saves.current++;
       throw new Error('Could not reach the server. Check your connection and try again.');
     }
+    saves.current++;
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error ?? 'Could not save the change. Please try again.');
     accept(body.state);

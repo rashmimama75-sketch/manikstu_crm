@@ -431,7 +431,17 @@ for (let i = 0; i < 12; i++) {
 
 // ---- Orders: website orders plus telecaller sales of physical products --------------------
 
-const CITIES = ['Bhubaneswar', 'Cuttack', 'Berhampur', 'Sambalpur', 'Balasore', 'Koraput', 'Rayagada', 'Bolangir', 'Keonjhar', 'Angul'];
+// Towns orders come from, with the first four digits of their pincode (the district is worked out
+// from the pincode, see lib/regions.ts). Spread across districts, including Mayurbhanj.
+const PLACES: { city: string; pin: string }[] = [
+  { city: 'Bhubaneswar', pin: '7510' }, { city: 'Cuttack', pin: '7530' }, { city: 'Berhampur', pin: '7600' },
+  { city: 'Sambalpur', pin: '7680' }, { city: 'Balasore', pin: '7560' }, { city: 'Koraput', pin: '7640' },
+  { city: 'Rayagada', pin: '7650' }, { city: 'Bolangir', pin: '7670' }, { city: 'Keonjhar', pin: '7580' },
+  { city: 'Angul', pin: '7591' }, { city: 'Baripada', pin: '7570' }, { city: 'Rairangpur', pin: '7570' },
+  { city: 'Karanjia', pin: '7570' }, { city: 'Bhadrak', pin: '7561' }, { city: 'Jajpur', pin: '7550' },
+  { city: 'Dhenkanal', pin: '7590' }, { city: 'Bhawanipatna', pin: '7660' }, { city: 'Bargarh', pin: '7683' },
+  { city: 'Puri', pin: '7520' },
+];
 const VILLAGES = ['Kendupada', 'Baripada Road', 'Nuagaon', 'Badagaon', 'Chandapur', 'Khandagiri', 'Sunakhala', 'Rampur'];
 
 /** `daysAgo` → timestamp string, offset by extra hours (used to space out status changes). */
@@ -471,13 +481,14 @@ function lifecycle(age: number, method: PaymentMethod, hour: number, minute: num
 const physicalProducts = TRACKER_PRODUCTS.filter(p => p.vertical_id === 1);
 
 function customerFields() {
-  const city = pick(CITIES);
+  const place = pick(PLACES);
+  const city = place.city;
   return {
     phone: `9${int(100000000, 999999999)}`,
     address: `${int(1, 240)}, ${pick(VILLAGES)}`,
     city,
     state: 'Odisha',
-    pincode: `7${int(50001, 69999)}`,
+    pincode: `${place.pin}${String(int(1, 45)).padStart(2, '0')}`,
   };
 }
 

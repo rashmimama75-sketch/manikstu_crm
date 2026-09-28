@@ -3,9 +3,9 @@ import { Mail, MessageCircle, Phone, X } from 'lucide-react';
 import {
   TODAY,
   TELECALLERS,
-  VERTICALS,
   EnquiryStatus,
   EnquiryType,
+  LeadActivity,
   SalesOrder,
   TrackerLead,
   WebEnquiry,
@@ -13,13 +13,18 @@ import {
 import { MONTH, ORDER_CHIP, ago, daysBefore, nowStamp, rupees, shortDate, shortDateTime } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
 import ExportMenu from '../ExportMenu';
+import AssignEnquiryModal from './AssignEnquiryModal';
+import { stageName } from '../telecaller/tcData';
 
 interface EnquiriesViewProps {
   enquiries: WebEnquiry[];
   onEnquiriesChange: React.Dispatch<React.SetStateAction<WebEnquiry[]>>;
   leads: TrackerLead[];
+  /** Calls (shared data), for the caller picker's hints. */
+  activities: LeadActivity[];
   orders: SalesOrder[];
-  onConvertToLead: (enquiry: WebEnquiry, verticalId: number, callerId: number) => void;
+  /** Give enquiries to a telecaller: each becomes (or moves) their lead. */
+  onAssignToCaller: (enquiries: WebEnquiry[], callerId: number, verticalId: number | 'auto') => Promise<boolean>;
   onMoveToOnboarding: (enquiry: WebEnquiry) => void;
   onToast: (message: string) => void;
   initialQuery?: string;
@@ -51,8 +56,9 @@ export default function EnquiriesView({
   enquiries,
   onEnquiriesChange,
   leads,
+  activities,
   orders,
-  onConvertToLead,
+  onAssignToCaller,
   onMoveToOnboarding,
   onToast,
   initialQuery,
@@ -67,8 +73,12 @@ export default function EnquiriesView({
   const [openId, setOpenId] = useState<number | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
-  const [leadVertical, setLeadVertical] = useState(VERTICALS[0].id);
-  const [leadCaller, setLeadCaller] = useState(TELECALLERS[0].id);
+  /** Enquiries being assigned to a caller (null = picker closed). */
+  const [assignIds, setAssignIds] = useState<number[] | null>(null);
+
+  /** The lead an enquiry became: linked by id, or the lead with the same phone number. */
+  const leadFor = (e: WebEnquiry) =>
+    (e.lead_id !== null ? leads.find(l => l.id === e.lead_id) : undefined) ?? (e.phone ? leads.find(l => l.phone === e.phone) : undefined);
 
   // 1. Summary tiles
   const month = enquiries.filter(e => e.created_at.startsWith(MONTH));
@@ -197,7 +207,7 @@ export default function EnquiriesView({
 
   // Detail panel extras
   const pastOrders = open?.phone ? orders.filter(o => o.phone === open.phone) : [];
-  const linkedLead = open?.lead_id ? leads.find(l => l.id === open.lead_id) : undefined;
+  const linkedLead = open ? leadFor(open) : undefined;
   const mailto = open
     ? `mailto:${open.email}?subject=${encodeURIComponent('Re: your enquiry to Manikstu')}&body=${encodeURIComponent(replyDraft)}`
     : '';
@@ -295,6 +305,7 @@ export default function EnquiriesView({
           <button className="btn-secondary btn-small" onClick={() => markRead(selectedIds)}>Mark read</button>
           <button className="btn-secondary btn-small" onClick={() => markReplied(selectedIds)}>Mark replied</button>
           <button className="btn-secondary btn-small" onClick={() => archive(selectedIds)}>Archive</button>
+          <button className="btn-primary btn-small" onClick={() => setAssignIds(selectedIds)}>Assign to caller…</button>
           <ExportMenu small label="Export selected" onExport={format => exportRows(enquiries.filter(e => selected.has(e.id)), format, 'selected')} />
           <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
         </div>
@@ -312,19 +323,21 @@ export default function EnquiriesView({
                 <th>Message</th>
                 <th>Received</th>
                 <th>Status</th>
+                <th>Caller</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '28px 0' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '28px 0' }}>
                     No enquiries match these filters.
                   </td>
                 </tr>
               ) : pageRows.map(e => {
                 const age = daysBefore(e.created_at);
                 const late = (e.status === 'new' && age >= 1) || ALERTS['sales-2d'].test(e);
+                const lead = leadFor(e);
                 return (
                   <tr key={e.id} className={`${e.status === 'new' ? 'row-unread' : ''} ${selected.has(e.id) ? 'row-selected' : ''}`}>
                     <td><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggle(e.id)} aria-label={`Select enquiry from ${e.name}`} /></td>
@@ -336,15 +349,26 @@ export default function EnquiriesView({
                     <td><span className={`type-tag enq-type ${e.type}`}>{e.type}</span></td>
                     <td className="enq-message">
                       <span>{e.message}</span>
-                      {e.lead_id !== null && <div className="loc">→ Lead #{e.lead_id}</div>}
+                      {lead && <div className="loc">→ Lead #{lead.id} · {stageName(lead.stage_id)}</div>}
                     </td>
                     <td>
                       {shortDateTime(e.created_at)}
                       <div className={`loc ${late ? 'text-warn' : ''}`}>{ago(e.created_at)}</div>
                     </td>
                     <td><span className={`chip ${STATUS_CHIP[e.status]}`}>{e.status}</span></td>
+                    <td>{lead ? callerName(lead.assigned_to) : <span className="loc">Not assigned</span>}</td>
                     <td>
                       <div className="row-actions">
+                        {e.status !== 'archived' && e.type !== 'career' && (
+                          <button
+                            className={lead ? 'kanban-btn' : 'btn-primary btn-small'}
+                            disabled={!e.phone}
+                            title={e.phone ? undefined : 'No phone number: reply by email and ask for one first'}
+                            onClick={() => setAssignIds([e.id])}
+                          >
+                            {lead ? 'Reassign' : 'Assign'}
+                          </button>
+                        )}
                         <button className="kanban-btn" onClick={() => openEnquiry(e)}>{e.status === 'replied' || e.status === 'archived' ? 'View' : 'Reply'}</button>
                         {e.status === 'archived'
                           ? <button className="kanban-btn" onClick={() => restore(e.id)}>Restore</button>
@@ -422,35 +446,27 @@ export default function EnquiriesView({
                 </section>
               )}
 
-              {(open.type === 'sales' || open.type === 'general') && (
+              {open.type !== 'career' && (
                 <section className="od-section">
-                  <div className="od-label">Telecalling lead</div>
-                  {linkedLead ? (
-                    <div className="loc">
-                      Converted to lead #{linkedLead.id} · assigned to <strong>{callerName(linkedLead.assigned_to)}</strong>
-                    </div>
-                  ) : !open.phone ? (
+                  <div className="od-label">Telecalling</div>
+                  {!open.phone ? (
                     <div className="loc">No phone number, so this can’t go to a telecaller. Reply by email first and ask for a number.</div>
                   ) : (
-                    <>
-                      <div className="form-row">
-                        <div className="form-group">
-                          <label>Vertical</label>
-                          <select value={leadVertical} onChange={e => setLeadVertical(Number(e.target.value))}>
-                            {VERTICALS.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label>Assign to</label>
-                          <select value={leadCaller} onChange={e => setLeadCaller(Number(e.target.value))}>
-                            {TELECALLERS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </select>
-                        </div>
+                    <div className="od-customer">
+                      <div>
+                        {linkedLead ? (
+                          <>
+                            Lead #{linkedLead.id} · assigned to <strong>{callerName(linkedLead.assigned_to)}</strong>
+                            <div className="loc">Status: {stageName(linkedLead.stage_id)}</div>
+                          </>
+                        ) : (
+                          <span className="loc">Not assigned to a caller yet.</span>
+                        )}
                       </div>
-                      <button className="btn-secondary btn-small" onClick={() => onConvertToLead(open, leadVertical, leadCaller)}>
-                        Convert to lead
+                      <button className={linkedLead ? 'btn-secondary btn-small' : 'btn-primary btn-small'} onClick={() => setAssignIds([open.id])}>
+                        {linkedLead ? 'Reassign' : 'Assign to caller'}
                       </button>
-                    </>
+                    </div>
                   )}
                 </section>
               )}
@@ -507,6 +523,19 @@ export default function EnquiriesView({
             </div>
           </aside>
         </>
+      )}
+      {assignIds && (
+        <AssignEnquiryModal
+          targets={enquiries.filter(e => assignIds.includes(e.id))}
+          leads={leads}
+          activities={activities}
+          leadFor={leadFor}
+          onAssign={async (callerId, verticalId) => {
+            const ok = await onAssignToCaller(enquiries.filter(e => assignIds.includes(e.id)), callerId, verticalId);
+            if (ok) { setAssignIds(null); setSelected(new Set()); }
+          }}
+          onClose={() => setAssignIds(null)}
+        />
       )}
     </>
   );

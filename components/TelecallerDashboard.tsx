@@ -12,6 +12,7 @@ import TeamFollowups from './telecaller/TeamFollowups';
 import TeamSales from './telecaller/TeamSales';
 import StaffOnboarding from './telecaller/StaffOnboarding';
 import TelecallingExecutivesView from './views/TelecallingExecutivesView';
+import RegionalReportView from './views/RegionalReportView';
 import TeamComplaints from './telecaller/TeamComplaints';
 import TeamOrders from './telecaller/TeamOrders';
 import TeamInventory from './telecaller/TeamInventory';
@@ -83,6 +84,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     overview:   { title: 'Telecalling Team',     sub: `Good day, ${firstName}. Here's how the whole telecalling team is doing.` },
     leads:      { title: 'Leads & Assignment',   sub: 'Every lead across the team: find untouched ones and move them to someone with capacity.' },
     followups:  { title: 'Team Follow-ups',      sub: 'Who owes a callback, and who is falling behind.' },
+    regional:   { title: 'Regional Report',      sub: 'Orders by state, district and town: see what farmers bought in each area and download it.' },
     sales:      { title: 'Team Sales',           sub: 'What the team has sold, by telecaller, product and month.' },
     'exec-reports': { title: 'Executive Reports', sub: 'Every telecalling executive: calls, leads, follow-ups and sales. Open one for the full report, or download reports.' },
     onboarding: { title: 'Staff Onboarding',     sub: 'Add telecalling staff and create their Staff ID and temporary password.' },
@@ -108,7 +110,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
         { key: 'onboarding', label: 'Staff onboarding' },
       ],
     },
-    { label: 'Performance', items: [{ key: 'sales', label: 'Sales' }] },
+    { label: 'Performance', items: [{ key: 'sales', label: 'Sales' }, { key: 'regional', label: 'Regional report' }] },
     {
       label: 'Inventory',
       items: [
@@ -261,6 +263,18 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
           )}
           {activePage === 'followups' && (
             <TeamFollowups key={`fu-${focusCaller ?? 'all'}`} data={data} searchQuery={searchQuery} initialCaller={focusCaller} onReassign={handleReassign} onToast={showToast} />
+          )}
+          {activePage === 'regional' && (
+            <RegionalReportView
+              orders={SALES_ORDERS}
+              onOpenOrder={orderNumber => {
+                // Open it on Orders & tracking, filtered to this order
+                setActivePage('orders');
+                setSearchQuery(orderNumber);
+                window.scrollTo(0, 0);
+              }}
+              onToast={showToast}
+            />
           )}
           {activePage === 'sales' && <TeamSales data={data} onToast={showToast} />}
           {activePage === 'exec-reports' && (
