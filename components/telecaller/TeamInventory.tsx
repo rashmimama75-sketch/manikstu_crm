@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Copy, X } from 'lucide-react';
+import { BookOpen, Copy, FileText, X } from 'lucide-react';
 import { SalesOrder, TELECALLERS, TODAY } from '../../data/managerDashboard';
 import { Complaint } from '../../data/complaints';
 import { nowStamp, rupees, rupeesShort, shortDate } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
 import ExportMenu from '../ExportMenu';
+import CatalogueModal from '../views/CatalogueModal';
+import { CATALOG_PRODUCTS } from '../../data/catalogProducts';
+import { downloadProductSheet } from '../../lib/catalogPdf';
 import HBarList from '../HBarList';
 import { EmptyRow } from './shared';
 import { STATUS_LABEL } from './complaintsUtil';
@@ -44,6 +47,7 @@ export default function TeamInventory({ orders, complaints, searchQuery, onToast
   const [attention, setAttention] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>('urgent');
   const [openId, setOpenId] = useState<number | null>(null);
+  const [catalogueOpen, setCatalogueOpen] = useState(false);
 
   const q = searchQuery.trim().toLowerCase();
   const attn = ATTENTION.find(a => a.key === attention);
@@ -158,6 +162,9 @@ export default function TeamInventory({ orders, complaints, searchQuery, onToast
             <option value="name">Name</option>
           </select>
           <ExportMenu onExport={runExport} />
+          <button className="btn-secondary catalogue-btn" onClick={() => setCatalogueOpen(true)} title="Product catalogue with photos, as a PDF">
+            <BookOpen size={15} /> Catalogue PDF
+          </button>
         </div>
       </div>
 
@@ -250,12 +257,33 @@ export default function TeamInventory({ orders, complaints, searchQuery, onToast
         </div>
       </div>
 
-      {opened && <StockDrawer r={opened} orders={orders} onClose={() => setOpenId(null)} />}
+      {opened && <StockDrawer r={opened} orders={orders} onClose={() => setOpenId(null)} onToast={onToast} />}
+      {catalogueOpen && (
+        <CatalogueModal
+          products={CATALOG_PRODUCTS}
+          initialIds={shown.map(r => r.p.id)}
+          startLabel={shown.length === rows.length ? 'All in this list' : 'Filtered list'}
+          onToast={onToast}
+          onClose={() => setCatalogueOpen(false)}
+        />
+      )}
     </>
   );
 }
 
-function StockDrawer({ r, orders, onClose }: { r: StockRow; orders: SalesOrder[]; onClose: () => void }) {
+function StockDrawer({ r, orders, onClose, onToast }: { r: StockRow; orders: SalesOrder[]; onClose: () => void; onToast: (m: string) => void }) {
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const sheet = async () => {
+    setSheetBusy(true);
+    try {
+      await downloadProductSheet(r.p, TODAY);
+      onToast(`Product sheet downloaded: ${r.p.name}`);
+    } catch {
+      onToast('Could not create the product sheet. Please try again.');
+    } finally {
+      setSheetBusy(false);
+    }
+  };
   const now = nowStamp();
   const open = orders
     .map(o => ({ o, t: trackingFor(o, now), qty: o.items.find(i => i.product_name === r.p.name)?.quantity ?? 0 }))
@@ -353,6 +381,11 @@ function StockDrawer({ r, orders, onClose }: { r: StockRow; orders: SalesOrder[]
               ))}
             </ul>
           </section>
+        </div>
+        <div className="drawer-actions">
+          <button className="btn-secondary catalogue-btn" disabled={sheetBusy} onClick={sheet}>
+            <FileText size={14} /> {sheetBusy ? 'Preparing…' : 'Product sheet (PDF)'}
+          </button>
         </div>
       </aside>
     </>

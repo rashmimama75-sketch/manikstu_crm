@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Check, LayoutGrid, List, Star, X } from 'lucide-react';
+import { BookOpen, Check, FileText, LayoutGrid, List, Star, X } from 'lucide-react';
 import { CatalogProduct, LOW_STOCK_LEVEL, PRODUCT_LOCALES, ProductCategory } from '../../data/catalogProducts';
 import { TODAY, TRACKER_PRODUCTS, SalesOrder } from '../../data/managerDashboard';
 import { daysBefore, rupees, rupeesShort, shortDate } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
 import ExportMenu from '../ExportMenu';
+import CatalogueModal from './CatalogueModal';
+import { downloadProductSheet } from '../../lib/catalogPdf';
 
 interface ProductsViewProps {
   products: CatalogProduct[];
@@ -48,6 +50,22 @@ export default function ProductsView({ products, onProductsChange, orders, onToa
   const [imageIdx, setImageIdx] = useState(0);
   const [priceDraft, setPriceDraft] = useState('');
   const [stockDraft, setStockDraft] = useState('');
+  /** Catalogue PDF window: which products it starts with. */
+  const [catalogue, setCatalogue] = useState<{ ids: number[]; label: string } | null>(null);
+  const [sheetBusy, setSheetBusy] = useState<number | null>(null);
+
+  /** One-page product sheet (photo, details, how to order) for sending to a customer. */
+  const downloadSheet = async (p: CatalogProduct) => {
+    setSheetBusy(p.id);
+    try {
+      await downloadProductSheet(p, TODAY);
+      onToast(`Product sheet downloaded: ${p.name}`);
+    } catch {
+      onToast('Could not create the product sheet. Please try again.');
+    } finally {
+      setSheetBusy(null);
+    }
+  };
 
   // Sales over the last 30 days, from website and telecaller orders (cancelled excluded)
   const sales = useMemo(() => {
@@ -266,6 +284,13 @@ export default function ProductsView({ products, onProductsChange, orders, onToa
             <button className={view === 'table' ? 'active' : ''} onClick={() => setView('table')} title="Table view" aria-label="Table view"><List size={16} /></button>
           </div>
           <ExportMenu onExport={format => runExport(filtered, format, 'current filters')} />
+          <button
+            className="btn-secondary catalogue-btn"
+            onClick={() => setCatalogue({ ids: filtered.map(p => p.id), label: filtered.length === products.length ? 'All in this list' : 'Filtered list' })}
+            title="Product catalogue with photos, as a PDF"
+          >
+            <BookOpen size={15} /> Catalogue PDF
+          </button>
         </div>
       </div>
 
@@ -303,6 +328,9 @@ export default function ProductsView({ products, onProductsChange, orders, onToa
           <button className="btn-secondary btn-small" onClick={() => setFeatured(selectedIds, true)}>Mark featured</button>
           <button className="btn-secondary btn-small" onClick={() => setFeatured(selectedIds, false)}>Unfeature</button>
           <ExportMenu small label="Export selected" onExport={format => runExport(products.filter(p => selected.has(p.id)), format, 'selected')} />
+          <button className="btn-secondary btn-small catalogue-btn" onClick={() => setCatalogue({ ids: selectedIds, label: 'Selected' })}>
+            <BookOpen size={14} /> Catalogue of selected
+          </button>
           <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
         </div>
       )}
@@ -556,11 +584,23 @@ export default function ProductsView({ products, onProductsChange, orders, onToa
                   <Star size={14} /> {open.is_featured ? 'Unfeature' : 'Mark featured'}
                 </button>
                 <ExportMenu label="Export" onExport={format => runExport([open], format, open.name)} />
+                <button className="btn-secondary catalogue-btn" disabled={sheetBusy === open.id} onClick={() => downloadSheet(open)}>
+                  <FileText size={14} /> {sheetBusy === open.id ? 'Preparing…' : 'Product sheet (PDF)'}
+                </button>
               </div>
             </aside>
           </>
         );
       })()}
+      {catalogue && (
+        <CatalogueModal
+          products={products}
+          initialIds={catalogue.ids}
+          startLabel={catalogue.label}
+          onToast={onToast}
+          onClose={() => setCatalogue(null)}
+        />
+      )}
     </>
   );
 }
