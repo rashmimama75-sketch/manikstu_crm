@@ -45,7 +45,6 @@ import {
 import {
   SALES_ORDERS,
   TRACKER_PRODUCTS,
-  WEB_ENQUIRIES,
   TRACKER_SALES,
   TELECALLERS,
   VERTICALS,
@@ -59,7 +58,7 @@ import {
 import { CATALOG_PRODUCTS, CatalogProduct } from '../data/catalogProducts';
 import { nowStamp } from '../lib/format';
 import type { TrackerState } from '../lib/trackerOps';
-import { useTracker } from '../lib/useTracker';
+import { useSharedEnquiries, useTracker } from '../lib/useTracker';
 import SyncBadge from './SyncBadge';
 import type { SessionUser } from '../lib/session';
 
@@ -98,7 +97,8 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
     () => teamAlerts(staffStats(telecallingData, 'today', 'all')).filter(a => a.level === 'critical').length,
     [telecallingData],
   );
-  const [webEnquiries, setWebEnquiries] = useState<WebEnquiry[]>(WEB_ENQUIRIES);
+  // Website enquiries are shared with the telecalling head's Enquiries page (kept in sync with the server)
+  const [webEnquiries, setWebEnquiries] = useSharedEnquiries(sync, msg => showToast(`⚠️ ${msg}`));
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
   // Website product catalogue, editable on the Products page
   const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>(CATALOG_PRODUCTS);

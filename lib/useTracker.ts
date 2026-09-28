@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { TrackerAction, TrackerState } from './trackerOps';
+import type { Dispatch, SetStateAction } from 'react';
+import type { WebEnquiry } from '../data/managerDashboard';
+import { EnquiryPatch, TrackerAction, TrackerState, enquiriesOf } from './trackerOps';
 
 // Keeps a dashboard's copy of the shared telecalling data in step with the server:
 // checks for changes every few seconds (and when the tab comes back into view), and sends changes.
@@ -85,4 +87,43 @@ export function useTracker(initial: TrackerState): TrackerSync {
   }, [accept]);
 
   return { data, run, syncedAt, offline };
+}
+
+const ENQUIRY_FIELDS = ['status', 'admin_notes', 'replied_at', 'lead_id'] as const;
+
+/**
+ * Shared website enquiries as [list, setter], shaped like useState so the Enquiries page works
+ * unchanged. The setter shows the change straight away and saves only the changed fields; if saving
+ * fails, the list goes back to the server's version and onError gets the message.
+ */
+export function useSharedEnquiries(sync: TrackerSync, onError: (message: string) => void): [WebEnquiry[], Dispatch<SetStateAction<WebEnquiry[]>>] {
+  const server = enquiriesOf(sync.data);
+  const [pending, setPending] = useState<WebEnquiry[] | null>(null);
+  const shown = pending ?? server;
+  const latest = useRef(shown);
+  latest.current = shown;
+  const inFlight = useRef(0);
+
+  const { run } = sync;
+  const setEnquiries = useCallback<Dispatch<SetStateAction<WebEnquiry[]>>>(update => {
+    const before = latest.current;
+    const next = typeof update === 'function' ? update(before) : update;
+    const changes: { id: number; patch: EnquiryPatch }[] = [];
+    next.forEach(e => {
+      const old = before.find(x => x.id === e.id);
+      if (!old) return;
+      const patch: EnquiryPatch = {};
+      ENQUIRY_FIELDS.forEach(k => { if (e[k] !== old[k]) (patch as Record<string, unknown>)[k] = e[k]; });
+      if (Object.keys(patch).length) changes.push({ id: e.id, patch });
+    });
+    if (changes.length === 0) return;
+    latest.current = next;
+    setPending(next);
+    inFlight.current++;
+    run({ type: 'update-enquiries', changes })
+      .then(() => { if (--inFlight.current === 0) setPending(null); })
+      .catch(err => { inFlight.current--; setPending(null); onError((err as Error).message); });
+  }, [run, onError]);
+
+  return [shown, setEnquiries];
 }

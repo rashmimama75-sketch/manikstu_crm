@@ -7,8 +7,8 @@
 // data (lib/trackerStore.ts). Record shapes are the existing tracker tables, unchanged.
 
 import {
-  FOLLOWUPS, LEAD_ACTIVITIES, STAGES, TELECALLERS, TRACKER_LEADS, VERTICALS,
-  CallOutcome, Followup, LeadActivity, TrackerLead,
+  FOLLOWUPS, LEAD_ACTIVITIES, STAGES, TELECALLERS, TRACKER_LEADS, VERTICALS, WEB_ENQUIRIES,
+  CallOutcome, EnquiryStatus, Followup, LeadActivity, TrackerLead, WebEnquiry,
 } from '../data/managerDashboard';
 import { nowStamp } from './format';
 
@@ -23,7 +23,15 @@ export interface TrackerState {
    * lead records stay unchanged. Leads missing here (the sample data) count as assigned when created.
    */
   assignments?: Record<string, Assignment>;
+  /** Website enquiries, shared by the manager's and the telecalling head's Enquiries pages. */
+  enquiries?: WebEnquiry[];
 }
+
+/** Fields of an enquiry the Enquiries pages may change. */
+export type EnquiryPatch = Partial<Pick<WebEnquiry, 'status' | 'admin_notes' | 'replied_at' | 'lead_id'>>;
+
+/** Enquiries in the stored data, or the sample ones if none were saved yet. */
+export const enquiriesOf = (state: Pick<TrackerState, 'enquiries'>): WebEnquiry[] => state.enquiries ?? WEB_ENQUIRIES;
 
 export interface Assignment {
   at: string;
@@ -59,7 +67,8 @@ export type TrackerAction =
   | { type: 'assign'; leadIds: number[]; callerId: number }
   | { type: 'log-call'; call: CallInput }
   | { type: 'import-report'; calls: CallInput[] }
-  | { type: 'complete-followup'; followupId: number };
+  | { type: 'complete-followup'; followupId: number }
+  | { type: 'update-enquiries'; changes: { id: number; patch: EnquiryPatch }[] };
 
 export type ActorRole = 'manager' | 'telecaller' | 'calling-executive';
 export interface Actor {
@@ -77,7 +86,10 @@ export const ALLOWED: Record<TrackerAction['type'], ActorRole[]> = {
   'log-call': ['calling-executive'],
   'import-report': ['calling-executive'],
   'complete-followup': ['calling-executive'],
+  'update-enquiries': ['manager', 'telecaller'],
 };
+
+const ENQUIRY_STATUSES: EnquiryStatus[] = ['new', 'read', 'replied', 'archived'];
 
 export const OUTCOME_LIST: CallOutcome[] = ['Connected', 'No answer', 'Busy', 'Wrong number'];
 const MAX_IMPORT = 500;
@@ -186,6 +198,7 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
     followups: current.followups.map(f => ({ ...f })),
     activities: [...current.activities],
     assignments: { ...(current.assignments ?? {}) },
+    enquiries: enquiriesOf(current).map(e => ({ ...e })),
   };
   const noteAssigned = (ids: number[]) => {
     const at = stamp();
@@ -244,6 +257,28 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
       if (f.status !== 'done') { f.status = 'done'; f.completed_at = stamp(); }
       return { state, message: `Follow-up done: ${lead.customer_name}` };
     }
+    case 'update-enquiries': {
+      if (!Array.isArray(action.changes) || action.changes.length === 0) throw new TrackerError('Nothing to change.');
+      for (const { id, patch } of action.changes) {
+        const e = state.enquiries!.find(x => x.id === Number(id));
+        if (!e) throw new TrackerError('That enquiry no longer exists.');
+        if (patch.status !== undefined) {
+          if (!ENQUIRY_STATUSES.includes(patch.status)) throw new TrackerError('Unknown enquiry status.');
+          e.status = patch.status;
+        }
+        if (patch.admin_notes !== undefined) e.admin_notes = patch.admin_notes === null ? null : String(patch.admin_notes).slice(0, 2000);
+        if (patch.replied_at !== undefined) {
+          if (patch.replied_at !== null && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(patch.replied_at)) throw new TrackerError('Invalid reply time.');
+          e.replied_at = patch.replied_at;
+        }
+        if (patch.lead_id !== undefined) {
+          if (patch.lead_id !== null && !state.leads.some(l => l.id === Number(patch.lead_id))) throw new TrackerError('That lead no longer exists.');
+          e.lead_id = patch.lead_id === null ? null : Number(patch.lead_id);
+        }
+      }
+      const n = action.changes.length;
+      return { state, message: `${n} ${n === 1 ? 'enquiry' : 'enquiries'} updated` };
+    }
     default:
       throw new TrackerError('Unknown change.');
   }
@@ -251,7 +286,7 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
 
 /** What a calling executive may see: their own leads, with the full call history on them. */
 export function stateFor(state: TrackerState, actor: Actor): TrackerState {
-  if (actor.role !== 'calling-executive') return state;
+  if (actor.role !== 'calling-executive') return state.enquiries ? state : { ...state, enquiries: WEB_ENQUIRIES };
   const leads = state.leads.filter(l => l.assigned_to === actor.callerId);
   const ids = new Set(leads.map(l => l.id));
   return {
