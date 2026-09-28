@@ -14,6 +14,7 @@ import StaffOnboarding from './telecaller/StaffOnboarding';
 import TelecallingExecutivesView from './views/TelecallingExecutivesView';
 import RegionalReportView from './views/RegionalReportView';
 import EnquiriesView from './views/EnquiriesView';
+import TeamReports from './telecaller/TeamReports';
 import TeamComplaints from './telecaller/TeamComplaints';
 import TeamOrders from './telecaller/TeamOrders';
 import TeamInventory from './telecaller/TeamInventory';
@@ -97,6 +98,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     inventory:  { title: 'Stock',                sub: 'What the team can sell today, what is running out and which customers are waiting.' },
     orders:     { title: 'Orders & Tracking',    sub: 'What each customer bought and where the parcel is: packed, shipped, out for delivery, delivered.' },
     enquiries:  { title: 'Website Enquiries',    sub: 'Messages from the website contact form: reply, and assign them to a caller as leads.' },
+    reports:    { title: 'Reports & Analytics',  sub: 'Generate and export telecalling, sales, order, stock and support reports as Excel or PDF.' },
     complaints: { title: 'Complaints',           sub: 'Assign each customer complaint to the right telecaller and see it through to resolution.' },
   };
   const currentMeta = pageMeta[activePage] || pageMeta.overview;
@@ -132,6 +134,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
         { key: 'complaints', label: 'Complaints', count: toAssign },
       ],
     },
+    { label: 'Reports', items: [{ key: 'reports', label: 'Reports & Analytics' }] },
   ];
 
   const handleNavigate = (page: string, callerId?: number) => {
@@ -376,6 +379,9 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
               onImportEnquiries={handleImportEnquiries}
               onToast={showToast}
             />
+          )}
+          {activePage === 'reports' && (
+            <TeamReports data={data} complaints={complaints} enquiries={enquiries} headName={user.name} onToast={showToast} />
           )}
           {activePage === 'complaints' && (
             <TeamComplaints complaints={complaints} onComplaintsChange={setComplaints} headName={user.name} searchQuery={searchQuery} onToast={showToast} />
