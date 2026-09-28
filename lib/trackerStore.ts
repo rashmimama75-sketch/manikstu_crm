@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs
 import path from 'path';
 import { TELECALLERS } from '../data/managerDashboard';
 import type { SessionUser } from './session';
-import { Actor, ActionResult, TrackerAction, TrackerState, applyAction, sampleState } from './trackerOps';
+import { Actor, ActionResult, TrackerAction, TrackerError, TrackerState, applyAction, isActorRole, sampleState } from './trackerOps';
 
 // The telecalling data every dashboard shares. Until the backend's tracker tables are connected,
 // it is kept in a local JSON file, starting from the sample data. Server-only.
@@ -46,6 +46,7 @@ export function changeTracker(action: TrackerAction, actor: Actor): ActionResult
 
 /** The signed-in user as someone who changes tracker data. Calling executives are matched to their telecaller record by name. */
 export function actorFor(user: SessionUser): Actor {
+  if (!isActorRole(user.role)) throw new TrackerError('You are not allowed to see the telecalling data.');
   return {
     role: user.role,
     name: user.name,

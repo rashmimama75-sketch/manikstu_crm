@@ -4,6 +4,9 @@
 // data shaped like the table the backend would need.
 
 import { SALES_ORDERS, TELECALLERS, TODAY, SalesOrder } from './managerDashboard';
+import { addHours } from '../lib/time';
+
+export { addHours };
 
 export type ComplaintStatus = 'open' | 'in_progress' | 'waiting' | 'escalated' | 'resolved' | 'closed';
 export type Priority = 'urgent' | 'high' | 'medium' | 'low';
@@ -73,13 +76,6 @@ export function suggestPriority(category: Category, order?: SalesOrder): Priorit
   return 'medium';
 }
 
-/** "YYYY-MM-DDTHH:mm" plus some hours. */
-export function addHours(ts: string, hours: number): string {
-  const d = new Date(`${ts}:00`);
-  d.setMinutes(d.getMinutes() + Math.round(hours * 60));
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 
 // ---- Sample generation (fixed seed, so it's the same on every load) -------------------------
 

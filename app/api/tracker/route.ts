@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '../../../lib/auth';
 import { actorFor, changeTracker, loadTracker } from '../../../lib/trackerStore';
-import { TrackerAction, TrackerError, stateFor } from '../../../lib/trackerOps';
+import { TrackerAction, TrackerError, isActorRole, stateFor } from '../../../lib/trackerOps';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
+  if (!isActorRole(user.role)) return NextResponse.json({ error: 'Not allowed' }, { status: 403 });
 
   const state = loadTracker();
   const since = new URL(request.url).searchParams.get('since');
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
+  if (!isActorRole(user.role)) return NextResponse.json({ error: 'Not allowed' }, { status: 403 });
 
   let action: TrackerAction;
   try {

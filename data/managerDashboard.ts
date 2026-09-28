@@ -5,7 +5,9 @@
 
 import { CATALOG_PRODUCTS } from './catalogProducts';
 
-export const TODAY = '2026-09-24';
+import { TODAY } from './today';
+
+export { TODAY };
 
 /** A telecalling staff member (`users` with role telecaller: name, region, is_active). */
 export interface Telecaller { id: number; name: string; region: string; is_active: boolean }

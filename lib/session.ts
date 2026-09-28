@@ -1,7 +1,7 @@
 // Signed session cookie. Uses Web Crypto only, so it runs in both the
 // Edge middleware and Node route handlers.
 
-export type Role = 'manager' | 'telecaller' | 'calling-executive';
+export type Role = 'manager' | 'telecaller' | 'calling-executive' | 'seller';
 
 export interface SessionUser {
   id: string;
@@ -22,6 +22,7 @@ export const ROLE_HOME: Record<Role, string> = {
   manager: '/manager',
   telecaller: '/telecaller',
   'calling-executive': '/calling-executive',
+  seller: '/seller',
 };
 
 const DEV_SECRET = 'dev-only-insecure-secret-change-me';

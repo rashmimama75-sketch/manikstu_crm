@@ -5,6 +5,9 @@
 
 export type ProductCategory = 'Health' | 'Nutrition';
 
+// Kept in its own file so pages can use it without loading the catalogue.
+export { LOW_STOCK_LEVEL } from './stockLevels';
+
 export interface CatalogProduct {
   id: number;
   name: string;
@@ -33,8 +36,6 @@ export interface CatalogProduct {
   translations: string[];
 }
 
-/** Stock at or below this counts as low. Not in the backend yet (no per-product reorder level). */
-export const LOW_STOCK_LEVEL = 20;
 
 /** Translation languages the website offers. */
 export const PRODUCT_LOCALES: { code: string; label: string }[] = [

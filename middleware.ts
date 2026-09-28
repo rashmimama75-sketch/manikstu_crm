@@ -6,6 +6,7 @@ const PROTECTED: Array<{ prefix: string; role: Role }> = [
   { prefix: '/manager', role: 'manager' },
   { prefix: '/telecaller', role: 'telecaller' },
   { prefix: '/calling-executive', role: 'calling-executive' },
+  { prefix: '/seller', role: 'seller' },
 ];
 
 export async function middleware(request: NextRequest) {
