@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
+import type { OrderStatus } from '../../data/managerDashboard';
 import { TODAY } from '../../data/today';
 import { daysBefore, rupees, shortDate, shortDateTime } from '../../lib/format';
 import Modal from '../Modal';
 import { STAGE_CHIP, STAGE_FLOW, STAGE_LABEL, TrackStage, Tracking, stageIndex, trackingFor } from '../telecaller/orderTracking';
-import { SellerOrder } from './sellerData';
+import { NEXT_STEP, SellerOrder, ShipmentDetails } from './sellerData';
 
-type Tab = 'active' | 'late' | 'delivered' | 'cancelled' | 'all';
+type Tab = 'confirmed' | 'active' | 'late' | 'delivered' | 'cancelled' | 'all';
 const TABS: { key: Tab; label: string }[] = [
+  { key: 'confirmed', label: 'Ready to ship' },
   { key: 'active', label: 'On the way' },
   { key: 'late', label: 'Late' },
   { key: 'delivered', label: 'Delivered' },
@@ -18,9 +20,10 @@ const PAGE_SIZE = 15;
 
 const lastAt = (t: Tracking, stage: TrackStage) => t.events.find(e => e.stage === stage)?.at ?? null;
 const isActive = (t: Tracking) => t.stage !== 'delivered' && t.stage !== 'cancelled';
-const inTab = (t: Tracking, tab: Tab) =>
+const inTab = (o: SellerOrder, t: Tracking, tab: Tab) =>
   tab === 'all' ? true
-    : tab === 'active' ? isActive(t)
+    : tab === 'confirmed' ? o.order.status === 'confirmed'
+    : tab === 'active' ? isActive(t) && o.order.status !== 'confirmed'
     : tab === 'late' ? t.delayed
     : t.stage === tab;
 
@@ -35,17 +38,25 @@ function TrackBar({ t }: { t: Tracking }) {
   );
 }
 
-export default function SellerTracking({ orders, searchQuery }: { orders: SellerOrder[]; searchQuery: string }) {
+interface Props {
+  orders: SellerOrder[];
+  searchQuery: string;
+  shipmentDetails: Record<number, ShipmentDetails>;
+  onAdvance: (orderId: number, to: OrderStatus) => void;
+  onOpenConfirm: (orderId: number) => void;
+}
+
+export default function SellerTracking({ orders, searchQuery, shipmentDetails, onAdvance, onOpenConfirm }: Props) {
   const [tab, setTab] = useState<Tab>('active');
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
 
   const tracked = useMemo(() => orders.map(o => ({ o, t: trackingFor(o.order) })), [orders]);
-  const count = (k: Tab) => tracked.filter(x => inTab(x.t, k)).length;
+  const count = (k: Tab) => tracked.filter(x => inTab(x.o, x.t, k)).length;
 
   const q = searchQuery.trim().toLowerCase();
   const rows = tracked
-    .filter(x => inTab(x.t, tab))
+    .filter(x => inTab(x.o, x.t, tab))
     .filter(x => !q || [x.o.order.order_number, x.o.order.customer_name, x.o.order.city, x.t.awb ?? '', x.t.courier ?? '']
       .some(v => v.toLowerCase().includes(q)))
     // late first, then the soonest expected delivery
@@ -56,6 +67,12 @@ export default function SellerTracking({ orders, searchQuery }: { orders: Seller
 
   const deliveredWeek = tracked.filter(x => x.t.stage === 'delivered' && daysBefore(lastAt(x.t, 'delivered') ?? '2000-01-01') < 7).length;
   const open = tracked.find(x => x.o.order.id === openId);
+
+  // Ship from right here: move it into "On the way" too, or it'd vanish from "Ready to ship" with nothing to show for it.
+  const shipOrder = (orderId: number) => {
+    onAdvance(orderId, NEXT_STEP.confirmed!.to);
+    setTab('active');
+  };
 
   return (
     <>
@@ -104,9 +121,14 @@ export default function SellerTracking({ orders, searchQuery }: { orders: Seller
                   </td>
                   <td>{t.courier ? <>{t.courier}<div className="loc">{t.awb}</div></> : <span className="loc">Not shipped yet</span>}</td>
                   <td className="track-action">
-                    <button className="icon-btn eye-btn" title="Track delivery" aria-label={`Track delivery of ${o.order.order_number}`} onClick={() => setOpenId(o.order.id)}>
-                      <Eye size={16} />
-                    </button>
+                    <div className="row-actions">
+                      {o.order.status === 'confirmed' && (
+                        <button className="btn-primary btn-small" onClick={() => shipOrder(o.order.id)}>{NEXT_STEP.confirmed!.label}</button>
+                      )}
+                      <button className="icon-btn eye-btn" title="Track delivery" aria-label={`Track delivery of ${o.order.order_number}`} onClick={() => setOpenId(o.order.id)}>
+                        <Eye size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -138,6 +160,31 @@ export default function SellerTracking({ orders, searchQuery }: { orders: Seller
                   {o.items.map(i => `${i.product_name} × ${i.quantity}`).join(', ')} · {rupees(o.gross)}
                 </div>
               </section>
+
+              <section className="od-section od-row">
+                <div>
+                  <div className="od-label">Your order reference</div>
+                  {shipmentDetails[o.order.id] ? (
+                    <>
+                      {shipmentDetails[o.order.id].orderNo}
+                      <div className="loc">Tracking {shipmentDetails[o.order.id].trackingNo}</div>
+                    </>
+                  ) : (
+                    <span className="loc">Not added yet</span>
+                  )}
+                </div>
+                <button className="link link-btn" onClick={() => onOpenConfirm(o.order.id)}>
+                  {shipmentDetails[o.order.id] ? 'Edit' : 'Add details'}
+                </button>
+              </section>
+
+              {o.order.status === 'confirmed' && (
+                <section className="od-section">
+                  <button className="btn-primary btn-small" onClick={() => { shipOrder(o.order.id); setOpenId(null); }}>
+                    {NEXT_STEP.confirmed!.label}
+                  </button>
+                </section>
+              )}
 
               {t.stage !== 'cancelled' && (
                 <section className="od-section">

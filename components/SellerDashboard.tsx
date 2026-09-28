@@ -147,14 +147,16 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     showToast(`${restocking.name}: +${units} units added to stock`);
   };
 
-  const toShip = myOrders.filter(o => o.order.status === 'pending' || o.order.status === 'confirmed').length;
+  // Matches what the Orders page shows: new orders still waiting to be confirmed.
+  const toConfirm = myOrders.filter(o => o.order.status === 'pending').length;
+  const toShip = myOrders.filter(o => o.order.status === 'confirmed').length;
   const lowStock = myProducts.filter(p => p.is_active && p.stock_quantity <= 20).length;
   const due = myOrders.filter(o => o.payout === 'Due').length;
   const lateShipments = useMemo(() => myOrders.filter(o => trackingFor(o.order).delayed).length, [myOrders]);
 
   const pageMeta: Record<string, { title: string; sub: string }> = {
     overview: { title: 'Seller Dashboard', sub: `Your sales on Manikstu, ${user.name.split(' ')[0]}: orders to ship, stock and earnings.` },
-    orders:   { title: 'Orders',           sub: 'Orders that include your products. Confirm new ones, then mark them shipped.' },
+    orders:   { title: 'Orders',           sub: 'New orders waiting to be confirmed. Once confirmed, follow them in Tracking.' },
     products: { title: 'My Products',      sub: 'Your listings on the Manikstu website: price, stock and whether they are shown.' },
     stock:    { title: 'Stock',            sub: 'What you have, what is promised to customers, how long it lasts and what to restock.' },
     tracking: { title: 'Tracking',         sub: 'Where each of your orders is: courier, tracking number, expected delivery and history.' },
@@ -169,10 +171,10 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     {
       label: 'Sell',
       items: [
-        { key: 'orders', label: 'Orders', count: toShip },
+        { key: 'orders', label: 'Orders', count: toConfirm },
         { key: 'products', label: 'My products', count: lowStock },
         { key: 'stock', label: 'Stock' },
-        { key: 'tracking', label: 'Tracking', count: lateShipments },
+        { key: 'tracking', label: 'Tracking', count: lateShipments + toShip },
         { key: 'regional', label: 'Regional report' },
       ],
     },
@@ -285,14 +287,20 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               orders={myOrders}
               mixedOrderIds={mixedOrderIds}
               searchQuery={searchQuery}
-              onAdvance={advanceOrder}
-              shipmentDetails={shipmentDetails}
               onOpenConfirm={openConfirmCard}
             />
           )}
           {activePage === 'products' && <SellerProducts products={myProducts} orders={myOrders} searchQuery={searchQuery} onEdit={openEdit} />}
           {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} />}
-          {activePage === 'tracking' && <SellerTracking orders={myOrders} searchQuery={searchQuery} />}
+          {activePage === 'tracking' && (
+            <SellerTracking
+              orders={myOrders}
+              searchQuery={searchQuery}
+              shipmentDetails={shipmentDetails}
+              onAdvance={advanceOrder}
+              onOpenConfirm={openConfirmCard}
+            />
+          )}
           {activePage === 'regional' && <SellerRegional seller={seller} orders={myOrders} onToast={showToast} />}
           {activePage === 'payouts' && <SellerPayouts orders={myOrders} seller={seller} />}
           {activePage === 'reports' && <SellerReports seller={seller} orders={myOrders} products={myProducts} onToast={showToast} />}
