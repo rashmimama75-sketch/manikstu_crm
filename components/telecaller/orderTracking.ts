@@ -1,5 +1,5 @@
-import { SalesOrder, OrderStatus } from '../../data/managerDashboard';
-import { addHours } from '../../data/complaints';
+import type { SalesOrder, OrderStatus } from '../../data/managerDashboard';
+import { addHours } from '../../lib/time';
 import { nowStamp, shortDate } from '../../lib/format';
 
 // Shipment tracking for the head's Orders page. The backend only stores the order status

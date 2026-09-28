@@ -1,4 +1,5 @@
-import { TODAY, OrderStatus } from '../data/managerDashboard';
+import type { OrderStatus } from '../data/managerDashboard';
+import { TODAY } from '../data/today';
 
 // Formatting helpers shared by the manager dashboard and orders pages.
 // Dates are relative to TODAY so the sample data reads the same on any day.

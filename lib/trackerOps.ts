@@ -62,6 +62,9 @@ export type TrackerAction =
   | { type: 'complete-followup'; followupId: number };
 
 export type ActorRole = 'manager' | 'telecaller' | 'calling-executive';
+const ACTOR_ROLES: string[] = ['manager', 'telecaller', 'calling-executive'];
+/** Roles that may see or change the telecalling data (sellers may not). */
+export const isActorRole = (role: string): role is ActorRole => ACTOR_ROLES.includes(role);
 export interface Actor {
   role: ActorRole;
   name: string;
