@@ -18,11 +18,15 @@ const TABS: { key: Tab; label: string }[] = [
 const PAGE_SIZE = 15;
 
 const lastAt = (t: Tracking, stage: TrackStage) => t.events.find(e => e.stage === stage)?.at ?? null;
-const isActive = (t: Tracking) => t.stage !== 'delivered' && t.stage !== 'cancelled';
+// "On the way" must mean shipped-but-not-delivered, and nothing else. It used to be
+// `stage !== 'delivered' && stage !== 'cancelled'`, which also matched orders still sitting
+// at 'placed' (i.e. still pending, never even confirmed) - so as new orders arrived or were
+// confirmed, this tab's count and rows shifted for reasons that had nothing to do with
+// shipping, making already-shipped orders look like they'd been bumped off the list.
 const inTab = (o: SellerOrder, t: Tracking, tab: Tab) =>
   tab === 'all' ? true
     : tab === 'confirmed' ? o.order.status === 'confirmed'
-    : tab === 'active' ? isActive(t) && o.order.status !== 'confirmed'
+    : tab === 'active' ? o.order.status === 'shipped'
     : tab === 'late' ? t.delayed
     : t.stage === tab;
 
@@ -81,7 +85,7 @@ export default function SellerTracking({ orders, searchQuery, shipmentDetails, o
   return (
     <>
       <div className="scoreboard">
-        <div className="score"><div className="num">{tracked.filter(x => x.t.stage === 'confirmed' || x.t.stage === 'packed' || x.t.stage === 'placed').length}</div><div className="label">Waiting for pickup</div></div>
+        <div className="score"><div className="num">{tracked.filter(x => x.o.order.status === 'confirmed').length}</div><div className="label">Waiting for pickup</div></div>
         <div className="score"><div className="num">{tracked.filter(x => x.t.stage === 'shipped').length}</div><div className="label">In transit</div></div>
         <div className="score"><div className="num">{tracked.filter(x => x.t.stage === 'out_for_delivery').length}</div><div className="label">Out for delivery</div></div>
         <div className="score"><div className="num">{count('late')}{count('late') > 0 && <small className="warn">past due date</small>}</div><div className="label">Late</div></div>
