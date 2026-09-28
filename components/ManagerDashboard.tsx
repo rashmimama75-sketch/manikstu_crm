@@ -58,7 +58,6 @@ import {
 } from '../data/managerDashboard';
 import { CATALOG_PRODUCTS, CatalogProduct } from '../data/catalogProducts';
 import { nowStamp } from '../lib/format';
-import { detectVertical } from '../lib/leadImport';
 import type { TrackerState } from '../lib/trackerOps';
 import { useTracker } from '../lib/useTracker';
 import SyncBadge from './SyncBadge';
@@ -166,7 +165,7 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
   const pageMeta: Record<string, { title: string; sub: string }> = {
     dashboard:       { title: "Manager Dashboard", sub: "Telecalling team, sales pipeline, website orders and enquiries at a glance." },
     orders:          { title: "Orders", sub: "Website and telecaller orders — confirm, ship, deliver and collect payment." },
-    enquiries:       { title: "Website Enquiries", sub: "Messages from the website contact form — reply, assign to a caller, archive." },
+    enquiries:       { title: "Website Enquiries", sub: "Messages from the website contact form — reply, convert sales enquiries to leads, archive." },
     'tc-overview':   { title: "Telecalling · Team Overview", sub: "The whole telecalling team: calls, leads, follow-ups, sales and who needs a look." },
     'tc-executives': { title: "Telecalling Executives", sub: "Every telecalling executive. Tap one to see their leads, calls, follow-ups and sales." },
     customers:       { title: "Farmer Network", sub: "Directory of farmers across Odisha with crop profiles and purchase history." },
@@ -261,38 +260,20 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
   };
 
   // Website enquiry → telecalling lead in the first stage of the chosen vertical
-  // Website enquiries → a telecaller: new ones become leads in the chosen product line, enquiries that
-  // are already leads (same id or phone) move to the chosen caller. Returns true when saved.
-  const handleAssignEnquiries = async (enquiries: WebEnquiry[], callerId: number, verticalId: number | 'auto') => {
-    const caller = TELECALLERS.find(t => t.id === callerId)?.name ?? 'the caller';
-    const withPhone = enquiries.filter(e => e.phone);
-    const leadOf = (e: WebEnquiry) =>
-      (e.lead_id !== null ? trackerLeads.find(l => l.id === e.lead_id) : undefined) ?? trackerLeads.find(l => l.phone === e.phone);
-    const existing = withPhone.map(e => ({ e, lead: leadOf(e) })).filter(x => x.lead);
-    // One lead per phone number, even if the same person sent several enquiries
-    const fresh = withPhone.filter(e => !leadOf(e)).filter((e, i, all) => all.findIndex(x => x.phone === e.phone) === i);
+  const handleConvertToLead = async (enquiry: WebEnquiry, verticalId: number, callerId: number) => {
+    if (!enquiry.phone) return;
     try {
-      const links = new Map<number, number>(); // enquiry id → lead id
-      if (fresh.length) {
-        const { createdIds } = await sync.run({
-          type: 'import-leads',
-          leads: fresh.map(e => ({ vertical_id: verticalId === 'auto' ? detectVertical(`${e.message} ${e.type}`) ?? VERTICALS[0].id : verticalId, assigned_to: callerId, customer_name: e.name, phone: e.phone!, source: 'Website' })),
-        });
-        fresh.forEach((e, i) => links.set(e.id, createdIds[i]));
-        // Other enquiries from the same phone link to the same new lead
-        withPhone.forEach(e => { const twin = fresh.find(f => f.phone === e.phone); if (twin && !links.has(e.id)) links.set(e.id, links.get(twin.id)!); });
-      }
-      const toMove = existing.filter(x => x.lead!.assigned_to !== callerId).map(x => x.lead!.id);
-      if (toMove.length) await sync.run({ type: 'assign', leadIds: Array.from(new Set(toMove)), callerId });
-      existing.forEach(x => links.set(x.e.id, x.lead!.id));
-      setWebEnquiries(prev => prev.map(e => (links.has(e.id) ? { ...e, lead_id: links.get(e.id)!, status: e.status === 'new' ? 'read' : e.status } : e)));
-      const done = links.size;
-      const skipped = enquiries.length - withPhone.length;
-      showToast(`${done} ${done === 1 ? 'enquiry' : 'enquiries'} assigned to ${caller}${skipped ? ` · ${skipped} skipped (no phone)` : ''}`);
-      return true;
+      const { createdIds } = await sync.run({
+        type: 'add-lead',
+        lead: { vertical_id: verticalId, assigned_to: callerId, customer_name: enquiry.name, phone: enquiry.phone, source: 'Website' },
+      });
+      const leadId = createdIds[0];
+      setWebEnquiries(prev => prev.map(e => (e.id === enquiry.id ? { ...e, lead_id: leadId, status: e.status === 'new' ? 'read' : e.status } : e)));
+      const caller = TELECALLERS.find(t => t.id === callerId)?.name;
+      const vertical = VERTICALS.find(v => v.id === verticalId)?.name;
+      showToast(`Lead #${leadId} created in ${vertical} and assigned to ${caller}`);
     } catch (e) {
       showToast(`⚠️ ${(e as Error).message}`);
-      return false;
     }
   };
 
@@ -509,8 +490,7 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
               onEnquiriesChange={setWebEnquiries}
               leads={trackerLeads}
               orders={salesOrders}
-              activities={sync.data.activities}
-              onAssignToCaller={handleAssignEnquiries}
+              onConvertToLead={handleConvertToLead}
               onMoveToOnboarding={handleMoveToOnboarding}
               onToast={showToast}
               initialQuery={searchSeed?.page === 'enquiries' ? searchSeed.query : undefined}
