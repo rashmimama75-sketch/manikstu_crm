@@ -23,6 +23,7 @@ import InventoryView from './views/InventoryView';
 import MonetaryView from './views/MonetaryView';
 import ReportsView from './views/ReportsView';
 import TelecallingOverviewView from './views/TelecallingOverviewView';
+import RegionalReportView from './views/RegionalReportView';
 import TelecallingExecutivesView from './views/TelecallingExecutivesView';
 import { TeamData, staffStats, teamAlerts } from './telecaller/tcData';
 
@@ -44,7 +45,6 @@ import {
 import {
   SALES_ORDERS,
   TRACKER_PRODUCTS,
-  WEB_ENQUIRIES,
   TRACKER_SALES,
   TELECALLERS,
   VERTICALS,
@@ -58,7 +58,7 @@ import {
 import { CATALOG_PRODUCTS, CatalogProduct } from '../data/catalogProducts';
 import { nowStamp } from '../lib/format';
 import type { TrackerState } from '../lib/trackerOps';
-import { useTracker } from '../lib/useTracker';
+import { useSharedEnquiries, useTracker } from '../lib/useTracker';
 import SyncBadge from './SyncBadge';
 import type { SessionUser } from '../lib/session';
 
@@ -97,7 +97,8 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
     () => teamAlerts(staffStats(telecallingData, 'today', 'all')).filter(a => a.level === 'critical').length,
     [telecallingData],
   );
-  const [webEnquiries, setWebEnquiries] = useState<WebEnquiry[]>(WEB_ENQUIRIES);
+  // Website enquiries are shared with the telecalling head's Enquiries page (kept in sync with the server)
+  const [webEnquiries, setWebEnquiries] = useSharedEnquiries(sync, msg => showToast(`⚠️ ${msg}`));
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
   // Website product catalogue, editable on the Products page
   const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>(CATALOG_PRODUCTS);
@@ -169,6 +170,7 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
     'tc-executives': { title: "Telecalling Executives", sub: "Every telecalling executive. Tap one to see their leads, calls, follow-ups and sales." },
     customers:       { title: "Farmer Network", sub: "Directory of farmers across Odisha with crop profiles and purchase history." },
     farmer:          { title: "Farmer Profile", sub: "Land holding, livestock breakdown, crops and past orders." },
+    regional:        { title: "Regional Report", sub: "Orders by state, district and town: see what farmers bought in each area and download it." },
     products:        { title: "Products", sub: "Website catalogue — stock, price, visibility and 30-day sales for every product." },
     staffonboarding: { title: "User Onboarding", sub: "Recruitment funnel for telecallers, warehouse personnel and hub managers." },
     franchise:       { title: "Franchise Hubs", sub: "Performance, sales volume and payout management across Manikstu Agri Hubs." },
@@ -492,6 +494,18 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
               onMoveToOnboarding={handleMoveToOnboarding}
               onToast={showToast}
               initialQuery={searchSeed?.page === 'enquiries' ? searchSeed.query : undefined}
+            />
+          )}
+
+          {activePage === 'regional' && (
+            <RegionalReportView
+              orders={salesOrders}
+              onOpenOrder={orderNumber => {
+                setActivePage('orders');
+                setSearchSeed({ page: 'orders', query: orderNumber, token: Date.now() });
+                window.scrollTo(0, 0);
+              }}
+              onToast={showToast}
             />
           )}
 

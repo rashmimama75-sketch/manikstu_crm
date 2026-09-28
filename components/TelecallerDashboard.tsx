@@ -12,6 +12,8 @@ import TeamFollowups from './telecaller/TeamFollowups';
 import TeamSales from './telecaller/TeamSales';
 import StaffOnboarding from './telecaller/StaffOnboarding';
 import TelecallingExecutivesView from './views/TelecallingExecutivesView';
+import RegionalReportView from './views/RegionalReportView';
+import EnquiriesView from './views/EnquiriesView';
 import TeamComplaints from './telecaller/TeamComplaints';
 import TeamOrders from './telecaller/TeamOrders';
 import TeamInventory from './telecaller/TeamInventory';
@@ -20,11 +22,14 @@ import { Complaint, INITIAL_COMPLAINTS } from '../data/complaints';
 import { isUnassigned } from './telecaller/complaintsUtil';
 import {
   SALES_ORDERS,
+  TELECALLERS,
   TRACKER_SALES,
-  WEB_ENQUIRIES,
+  VERTICALS,
+  WebEnquiry,
 } from '../data/managerDashboard';
+import { detectVertical } from '../lib/leadImport';
 import type { TrackerState } from '../lib/trackerOps';
-import { useTracker } from '../lib/useTracker';
+import { useSharedEnquiries, useTracker } from '../lib/useTracker';
 import SyncBadge from './SyncBadge';
 import type { NewLead } from './telecaller/ImportLeads';
 import { TeamData, isOverdue, staffStats, teamAlerts } from './telecaller/tcData';
@@ -49,6 +54,8 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
   // with the server). Importing and assigning leads change them here; calls come in from the executives.
   const sync = useTracker(tracker);
   const { leads, followups, activities } = sync.data;
+  // Website enquiries: the same list as the manager's Enquiries page (shared through the server)
+  const [enquiries, setEnquiries] = useSharedEnquiries(sync, msg => showToast(`⚠️ ${msg}`));
   const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
   const data: TeamData = useMemo(
     () => ({ leads, followups, activities, sales: TRACKER_SALES }),
@@ -83,11 +90,13 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     overview:   { title: 'Telecalling Team',     sub: `Good day, ${firstName}. Here's how the whole telecalling team is doing.` },
     leads:      { title: 'Leads & Assignment',   sub: 'Every lead across the team: find untouched ones and move them to someone with capacity.' },
     followups:  { title: 'Team Follow-ups',      sub: 'Who owes a callback, and who is falling behind.' },
+    regional:   { title: 'Regional Report',      sub: 'Orders by state, district and town: see what farmers bought in each area and download it.' },
     sales:      { title: 'Team Sales',           sub: 'What the team has sold, by telecaller, product and month.' },
     'exec-reports': { title: 'Executive Reports', sub: 'Every telecalling executive: calls, leads, follow-ups and sales. Open one for the full report, or download reports.' },
     onboarding: { title: 'Staff Onboarding',     sub: 'Add telecalling staff and create their Staff ID and temporary password.' },
     inventory:  { title: 'Stock',                sub: 'What the team can sell today, what is running out and which customers are waiting.' },
     orders:     { title: 'Orders & Tracking',    sub: 'What each customer bought and where the parcel is: packed, shipped, out for delivery, delivered.' },
+    enquiries:  { title: 'Website Enquiries',    sub: 'Messages from the website contact form: reply, and assign them to a caller as leads.' },
     complaints: { title: 'Complaints',           sub: 'Assign each customer complaint to the right telecaller and see it through to resolution.' },
   };
   const currentMeta = pageMeta[activePage] || pageMeta.overview;
@@ -108,7 +117,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
         { key: 'onboarding', label: 'Staff onboarding' },
       ],
     },
-    { label: 'Performance', items: [{ key: 'sales', label: 'Sales' }] },
+    { label: 'Performance', items: [{ key: 'sales', label: 'Sales' }, { key: 'regional', label: 'Regional report' }] },
     {
       label: 'Inventory',
       items: [
@@ -116,7 +125,13 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
         { key: 'orders', label: 'Orders & tracking', count: lateOrders },
       ],
     },
-    { label: 'Support', items: [{ key: 'complaints', label: 'Complaints', count: toAssign }] },
+    {
+      label: 'Support',
+      items: [
+        { key: 'enquiries', label: 'Enquiries', count: enquiries.filter(e => e.status === 'new').length },
+        { key: 'complaints', label: 'Complaints', count: toAssign },
+      ],
+    },
   ];
 
   const handleNavigate = (page: string, callerId?: number) => {
@@ -134,6 +149,47 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
       showToast(message);
     } catch (e) {
       showToast(`⚠️ ${(e as Error).message}`);
+    }
+  };
+
+  /**
+   * Website enquiries → a telecaller: new ones become leads (product line chosen, or read from each
+   * message), enquiries that are already leads (same id or phone) move to the caller. True when saved.
+   */
+  const handleAssignEnquiries = async (list: WebEnquiry[], callerId: number, verticalId: number | 'auto') => {
+    const caller = TELECALLERS.find(t => t.id === callerId)?.name ?? 'the caller';
+    const withPhone = list.filter(e => e.phone);
+    const leadOf = (e: WebEnquiry) =>
+      (e.lead_id !== null ? leads.find(l => l.id === e.lead_id) : undefined) ?? leads.find(l => l.phone === e.phone);
+    const existing = withPhone.map(e => ({ e, lead: leadOf(e) })).filter(x => x.lead);
+    // One lead per phone number, even if the same person sent several enquiries
+    const fresh = withPhone.filter(e => !leadOf(e)).filter((e, i, all) => all.findIndex(x => x.phone === e.phone) === i);
+    try {
+      const links = new Map<number, number>(); // enquiry id → lead id
+      if (fresh.length) {
+        const { createdIds } = await sync.run({
+          type: 'import-leads',
+          leads: fresh.map(e => ({
+            vertical_id: verticalId === 'auto' ? detectVertical(`${e.message} ${e.type}`) ?? VERTICALS[0].id : verticalId,
+            assigned_to: callerId,
+            customer_name: e.name,
+            phone: e.phone!,
+            source: 'Website',
+          })),
+        });
+        fresh.forEach((e, i) => links.set(e.id, createdIds[i]));
+        withPhone.forEach(e => { const twin = fresh.find(x => x.phone === e.phone); if (twin && !links.has(e.id)) links.set(e.id, links.get(twin.id)!); });
+      }
+      const toMove = existing.filter(x => x.lead!.assigned_to !== callerId).map(x => x.lead!.id);
+      if (toMove.length) await sync.run({ type: 'assign', leadIds: Array.from(new Set(toMove)), callerId });
+      existing.forEach(x => links.set(x.e.id, x.lead!.id));
+      setEnquiries(prev => prev.map(e => (links.has(e.id) ? { ...e, lead_id: links.get(e.id)!, status: e.status === 'new' ? 'read' : e.status } : e)));
+      const skipped = list.length - withPhone.length;
+      showToast(`${links.size} ${links.size === 1 ? 'enquiry' : 'enquiries'} assigned to ${caller}${skipped ? ` · ${skipped} skipped (no phone)` : ''}`);
+      return true;
+    } catch (e) {
+      showToast(`⚠️ ${(e as Error).message}`);
+      return false;
     }
   };
 
@@ -249,7 +305,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
             <TeamOverview
               data={data}
               orders={SALES_ORDERS}
-              enquiries={WEB_ENQUIRIES}
+              enquiries={enquiries}
               onReassign={handleReassign}
               onOpenLeads={callerId => handleNavigate('leads', callerId)}
               onOpenFollowups={callerId => handleNavigate('followups', callerId)}
@@ -261,6 +317,18 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
           )}
           {activePage === 'followups' && (
             <TeamFollowups key={`fu-${focusCaller ?? 'all'}`} data={data} searchQuery={searchQuery} initialCaller={focusCaller} onReassign={handleReassign} onToast={showToast} />
+          )}
+          {activePage === 'regional' && (
+            <RegionalReportView
+              orders={SALES_ORDERS}
+              onOpenOrder={orderNumber => {
+                // Open it on Orders & tracking, filtered to this order
+                setActivePage('orders');
+                setSearchQuery(orderNumber);
+                window.scrollTo(0, 0);
+              }}
+              onToast={showToast}
+            />
           )}
           {activePage === 'sales' && <TeamSales data={data} onToast={showToast} />}
           {activePage === 'exec-reports' && (
@@ -275,6 +343,17 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
           {activePage === 'onboarding' && <StaffOnboarding onToast={showToast} />}
           {activePage === 'inventory' && <TeamInventory orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'orders' && <TeamOrders orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
+          {activePage === 'enquiries' && (
+            <EnquiriesView
+              enquiries={enquiries}
+              onEnquiriesChange={setEnquiries}
+              leads={leads}
+              activities={activities}
+              orders={SALES_ORDERS}
+              onAssignToCaller={handleAssignEnquiries}
+              onToast={showToast}
+            />
+          )}
           {activePage === 'complaints' && (
             <TeamComplaints complaints={complaints} onComplaintsChange={setComplaints} headName={user.name} searchQuery={searchQuery} onToast={showToast} />
           )}

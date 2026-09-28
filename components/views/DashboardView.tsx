@@ -306,7 +306,7 @@ export default function DashboardView({ orders, leads, followups, activities, on
                         onChange={e => reassign(lead.id, Number(e.target.value))}
                       >
                         <option value="" disabled>Reassign…</option>
-                        {TELECALLERS.filter(t => t.id !== lead.assigned_to).map(t => (
+                        {TELECALLERS.filter(t => t.is_active && t.id !== lead.assigned_to).map(t => (
                           <option key={t.id} value={t.id}>{t.name}</option>
                         ))}
                       </select>
@@ -336,7 +336,7 @@ export default function DashboardView({ orders, leads, followups, activities, on
                       onChange={e => reassign(l.id, Number(e.target.value))}
                     >
                       <option value="" disabled>Reassign…</option>
-                      {TELECALLERS.filter(t => t.id !== l.assigned_to).map(t => (
+                      {TELECALLERS.filter(t => t.is_active && t.id !== l.assigned_to).map(t => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
                     </select>

@@ -25,7 +25,8 @@ export default function Sidebar({ activePage, onSelectPage, counts }: SidebarPro
         { key: 'orders', label: 'Orders', count: counts.orders },
         { key: 'enquiries', label: 'Enquiries', count: counts.enquiries },
         { key: 'customers', label: 'Customers' },
-        { key: 'products', label: 'Products' }
+        { key: 'products', label: 'Products' },
+        { key: 'regional', label: 'Regional report' }
       ]
     },
     {
