@@ -59,10 +59,12 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     const order = orders.find(o => o.id === orderId);
     setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, status: to, status_history: [...o.status_history, { status: to, at }] } : o)));
     if (order) showToast(`${order.order_number} marked ${ORDER_STATUS_LABEL[to].toLowerCase()}`);
-    // Once shipped, the seller's next job is tracking the delivery, so take them straight there.
+    // Once shipped, the seller's next job is tracking the delivery, so take them straight there
+    // and filter to this order — a fresh shipment isn't "late" yet, so it sorts near the bottom
+    // of the default list and would otherwise be invisible without this.
     if (to === 'shipped') {
       setActivePage('tracking');
-      setSearchQuery('');
+      setSearchQuery(order?.order_number ?? '');
       window.scrollTo(0, 0);
     }
   };
