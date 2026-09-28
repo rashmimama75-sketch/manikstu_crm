@@ -8,7 +8,7 @@
 
 import {
   FOLLOWUPS, LEAD_ACTIVITIES, STAGES, TELECALLERS, TRACKER_LEADS, VERTICALS, WEB_ENQUIRIES,
-  CallOutcome, EnquiryStatus, Followup, LeadActivity, TrackerLead, WebEnquiry,
+  CallOutcome, EnquiryStatus, EnquiryType, Followup, LeadActivity, TrackerLead, WebEnquiry,
 } from '../data/managerDashboard';
 import { nowStamp } from './format';
 
@@ -25,6 +25,16 @@ export interface TrackerState {
   assignments?: Record<string, Assignment>;
   /** Website enquiries, shared by the manager's and the telecalling head's Enquiries pages. */
   enquiries?: WebEnquiry[];
+}
+
+/** An enquiry to add (imported from a file). created_at null = now. */
+export interface NewEnquiryData {
+  name: string;
+  email: string;
+  phone: string | null;
+  type: EnquiryType;
+  message: string;
+  created_at: string | null;
 }
 
 /** Fields of an enquiry the Enquiries pages may change. */
@@ -68,7 +78,8 @@ export type TrackerAction =
   | { type: 'log-call'; call: CallInput }
   | { type: 'import-report'; calls: CallInput[] }
   | { type: 'complete-followup'; followupId: number }
-  | { type: 'update-enquiries'; changes: { id: number; patch: EnquiryPatch }[] };
+  | { type: 'update-enquiries'; changes: { id: number; patch: EnquiryPatch }[] }
+  | { type: 'import-enquiries'; enquiries: NewEnquiryData[] };
 
 export type ActorRole = 'manager' | 'telecaller' | 'calling-executive';
 const ACTOR_ROLES: string[] = ['manager', 'telecaller', 'calling-executive'];
@@ -90,7 +101,10 @@ export const ALLOWED: Record<TrackerAction['type'], ActorRole[]> = {
   'import-report': ['calling-executive'],
   'complete-followup': ['calling-executive'],
   'update-enquiries': ['manager', 'telecaller'],
+  'import-enquiries': ['manager', 'telecaller'],
 };
+
+const ENQUIRY_TYPES: EnquiryType[] = ['sales', 'partnership', 'career', 'general'];
 
 const ENQUIRY_STATUSES: EnquiryStatus[] = ['new', 'read', 'replied', 'archived'];
 
@@ -281,6 +295,32 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
       }
       const n = action.changes.length;
       return { state, message: `${n} ${n === 1 ? 'enquiry' : 'enquiries'} updated` };
+    }
+    case 'import-enquiries': {
+      const list = action.enquiries;
+      if (!Array.isArray(list) || list.length === 0) throw new TrackerError('No enquiries to import.');
+      if (list.length > MAX_IMPORT) throw new TrackerError(`Import at most ${MAX_IMPORT} enquiries at a time.`);
+      const now = stamp();
+      let id = Math.max(0, ...state.enquiries!.map(e => e.id)) + 1;
+      const created: WebEnquiry[] = list.map((raw, i) => {
+        const row = list.length > 1 ? ` (row ${i + 1})` : '';
+        const name = String(raw.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        const email = String(raw.email ?? '').trim().slice(0, 120);
+        const digits = String(raw.phone ?? '').replace(/\D/g, '').slice(-10);
+        const phone = /^[6-9]\d{9}$/.test(digits) ? digits : null;
+        const message = String(raw.message ?? '').trim().slice(0, 2000);
+        if (!name) throw new TrackerError(`Name is missing${row}.`);
+        if (!phone && !email) throw new TrackerError(`Add a phone number or email${row}.`);
+        if (!message) throw new TrackerError(`Message is missing${row}.`);
+        if (!ENQUIRY_TYPES.includes(raw.type)) throw new TrackerError(`Unknown enquiry type${row}.`);
+        const when = raw.created_at && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw.created_at) && raw.created_at <= now ? raw.created_at : now;
+        return {
+          id: id++, name, email, phone, type: raw.type, message, status: 'new' as EnquiryStatus,
+          admin_notes: null, replied_at: null, customer_id: null, lead_id: null, created_at: when,
+        };
+      });
+      state.enquiries = [...created, ...state.enquiries!].sort((a, b) => b.created_at.localeCompare(a.created_at));
+      return { state, createdIds: created.map(e => e.id), message: `${created.length} ${created.length === 1 ? 'enquiry' : 'enquiries'} imported` };
     }
     default:
       throw new TrackerError('Unknown change.');

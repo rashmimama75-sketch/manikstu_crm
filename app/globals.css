@@ -2119,3 +2119,16 @@ tr.row-new td:first-child { box-shadow: inset 3px 0 0 var(--leaf); }
 .region-bars .hbar-row.selected .hbar-fill { background: var(--gold); }
 .region-bars .hbar-row.selected .hbar-label { font-weight: 700; }
 @media (max-width: 768px) { .region-arrow { display: none; } }
+
+/* ---- Enquiries import (telecalling head) ------------------------------------------------ */
+.import-btn { display: inline-flex; align-items: center; gap: 6px; }
+.import-table .type-select { min-width: 130px; padding: 4px 8px; font-size: 12.5px; }
+.import-table .enq-message span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 340px; }
+.check-line .filter-select { min-width: 160px; }
+
+/* ---- Telecalling head: Reports (cards use the manager's .report-grid / .report-card design) ---- */
+.download-all { display: inline-flex; align-items: center; gap: 6px; }
+.report-card .rmeta .export-menu .btn-secondary { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Follow-ups: due date on one line, "N days late" under it */
+.due-cell { white-space: nowrap; }
