@@ -28,7 +28,7 @@ import {
   WebEnquiry,
 } from '../data/managerDashboard';
 import { detectVertical } from '../lib/leadImport';
-import type { TrackerState } from '../lib/trackerOps';
+import type { NewEnquiryData, TrackerState } from '../lib/trackerOps';
 import { useSharedEnquiries, useTracker } from '../lib/useTracker';
 import SyncBadge from './SyncBadge';
 import type { NewLead } from './telecaller/ImportLeads';
@@ -183,9 +183,31 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
       const toMove = existing.filter(x => x.lead!.assigned_to !== callerId).map(x => x.lead!.id);
       if (toMove.length) await sync.run({ type: 'assign', leadIds: Array.from(new Set(toMove)), callerId });
       existing.forEach(x => links.set(x.e.id, x.lead!.id));
-      setEnquiries(prev => prev.map(e => (links.has(e.id) ? { ...e, lead_id: links.get(e.id)!, status: e.status === 'new' ? 'read' : e.status } : e)));
+      const changes = list.filter(e => links.has(e.id)).map(e => ({
+        id: e.id,
+        patch: { lead_id: links.get(e.id)!, ...(e.status === 'new' ? { status: 'read' as const } : {}) },
+      }));
+      if (changes.length) await sync.run({ type: 'update-enquiries', changes });
       const skipped = list.length - withPhone.length;
       showToast(`${links.size} ${links.size === 1 ? 'enquiry' : 'enquiries'} assigned to ${caller}${skipped ? ` · ${skipped} skipped (no phone)` : ''}`);
+      return true;
+    } catch (e) {
+      showToast(`⚠️ ${(e as Error).message}`);
+      return false;
+    }
+  };
+
+  /** Enquiries imported from a file; optionally the sales ones go straight to a caller. True when saved. */
+  const handleImportEnquiries = async (list: NewEnquiryData[], assignSalesTo: number | null) => {
+    try {
+      const { message, createdIds } = await sync.run({ type: 'import-enquiries', enquiries: list });
+      showToast(message);
+      if (assignSalesTo !== null) {
+        const sales: WebEnquiry[] = list
+          .map((e, i) => ({ ...e, id: createdIds[i], status: 'new' as const, admin_notes: null, replied_at: null, customer_id: null, lead_id: null, created_at: e.created_at ?? '' }))
+          .filter(e => e.type === 'sales');
+        if (sales.length) await handleAssignEnquiries(sales, assignSalesTo, 'auto');
+      }
       return true;
     } catch (e) {
       showToast(`⚠️ ${(e as Error).message}`);
@@ -351,6 +373,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
               activities={activities}
               orders={SALES_ORDERS}
               onAssignToCaller={handleAssignEnquiries}
+              onImportEnquiries={handleImportEnquiries}
               onToast={showToast}
             />
           )}
