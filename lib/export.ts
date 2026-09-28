@@ -30,11 +30,12 @@ function saveBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export async function exportExcel({ filename, title, subtitle, columns, rows }: ExportTable) {
-  const ExcelJS = (await import('exceljs')).default;
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'Manikstu CRM';
-  const ws = wb.addWorksheet(title.slice(0, 31));
+type Workbook = import('exceljs').Workbook;
+
+/** One formatted sheet (title, subtitle, header row, money columns, filters). */
+function addSheet(wb: Workbook, { title, subtitle, columns, rows }: ExportTable, sheetName = title) {
+  // Excel sheet names: max 31 characters, none of : \ / ? * [ ]
+  const ws = wb.addWorksheet(sheetName.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31));
 
   // Title rows above the table
   ws.addRow([title]).font = { bold: true, size: 14, color: { argb: `FF${BRAND_GREEN}` } };
@@ -66,9 +67,28 @@ export async function exportExcel({ filename, title, subtitle, columns, rows }: 
   });
   ws.autoFilter = { from: { row: headerRow.number, column: 1 }, to: { row: headerRow.number, column: columns.length } };
   ws.views = [{ state: 'frozen', ySplit: headerRow.number }];
+}
 
+async function saveWorkbook(wb: Workbook, filename: string) {
   const buffer = await wb.xlsx.writeBuffer();
   saveBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${filename}.xlsx`);
+}
+
+export async function exportExcel(table: ExportTable) {
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Manikstu CRM';
+  addSheet(wb, table);
+  await saveWorkbook(wb, table.filename);
+}
+
+/** Several tables in one Excel file, one sheet each (sheet names given with each table). */
+export async function exportWorkbook(filename: string, sheets: { name: string; table: ExportTable }[]) {
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Manikstu CRM';
+  sheets.forEach(({ name, table }) => addSheet(wb, table, name));
+  await saveWorkbook(wb, filename);
 }
 
 export async function exportPdf({ filename, title, subtitle, columns, rows }: ExportTable) {
