@@ -2066,3 +2066,6 @@ tr.row-new td:first-child { box-shadow: inset 3px 0 0 var(--leaf); }
 /* ---- Telecalling head: Reports (cards use the manager's .report-grid / .report-card design) ---- */
 .download-all { display: inline-flex; align-items: center; gap: 6px; }
 .report-card .rmeta .export-menu .btn-secondary { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Follow-ups: due date on one line, "N days late" under it */
+.due-cell { white-space: nowrap; }
