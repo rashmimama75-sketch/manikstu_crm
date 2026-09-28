@@ -9,7 +9,9 @@ import Modal from './Modal';
 import SellerOverview from './seller/SellerOverview';
 import SellerOrders from './seller/SellerOrders';
 import SellerProducts from './seller/SellerProducts';
+import SellerStock, { StockMovement } from './seller/SellerStock';
 import SellerTracking from './seller/SellerTracking';
+import SellerRegional from './seller/SellerRegional';
 import SellerPayouts from './seller/SellerPayouts';
 import SellerReports from './seller/SellerReports';
 import type { CatalogProduct } from '../data/catalogProducts';
@@ -80,6 +82,27 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     showToast(`${editing.name} updated`);
   };
 
+  // Restock (Stock page): adds units and records the movement
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [restocking, setRestocking] = useState<CatalogProduct | null>(null);
+  const [restockUnits, setRestockUnits] = useState('');
+  const [restockNote, setRestockNote] = useState('');
+  const openRestock = (p: CatalogProduct, suggested: number) => {
+    setRestocking(p);
+    setRestockUnits(String(suggested > 0 ? suggested : 10));
+    setRestockNote('');
+  };
+  const saveRestock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restocking) return;
+    const units = Math.round(Number(restockUnits));
+    if (!(units > 0)) return;
+    setCatalog(prev => prev.map(p => (p.id === restocking.id ? { ...p, stock_quantity: p.stock_quantity + units } : p)));
+    setMovements(prev => [...prev, { id: prev.length + 1, productId: restocking.id, units, note: restockNote.trim(), at: nowStamp() }]);
+    setRestocking(null);
+    showToast(`${restocking.name}: +${units} units added to stock`);
+  };
+
   const toShip = myOrders.filter(o => o.order.status === 'pending' || o.order.status === 'confirmed').length;
   const lowStock = myProducts.filter(p => p.is_active && p.stock_quantity <= 20).length;
   const due = myOrders.filter(o => o.payout === 'Due').length;
@@ -89,7 +112,9 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     overview: { title: 'Seller Dashboard', sub: `Your sales on Manikstu, ${user.name.split(' ')[0]}: orders to ship, stock and earnings.` },
     orders:   { title: 'Orders',           sub: 'Orders that include your products. Confirm new ones, then mark them shipped.' },
     products: { title: 'My Products',      sub: 'Your listings on the Manikstu website: price, stock and whether they are shown.' },
+    stock:    { title: 'Stock',            sub: 'What you have, what is promised to customers, how long it lasts and what to restock.' },
     tracking: { title: 'Tracking',         sub: 'Where each of your orders is: courier, tracking number, expected delivery and history.' },
+    regional: { title: 'Regional Report',  sub: 'Where your products sell: orders and customers by state, district, town and PIN code.' },
     payouts:  { title: 'Payouts',          sub: 'What you earn from each order after Manikstu commission, and when it is paid.' },
     reports:  { title: 'Reports',          sub: 'Your orders, payouts and stock, exportable to Excel or PDF.' },
   };
@@ -102,7 +127,9 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
       items: [
         { key: 'orders', label: 'Orders', count: toShip },
         { key: 'products', label: 'My products', count: lowStock },
+        { key: 'stock', label: 'Stock' },
         { key: 'tracking', label: 'Tracking', count: lateShipments },
+        { key: 'regional', label: 'Regional report' },
       ],
     },
     {
@@ -185,12 +212,12 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               <div className="sub">{currentMeta.sub}</div>
             </div>
             <div className="topbar-tools">
-              {(activePage === 'orders' || activePage === 'products' || activePage === 'tracking') && (
+              {(activePage === 'orders' || activePage === 'products' || activePage === 'stock' || activePage === 'tracking') && (
                 <div className="search">
                   <Search size={16} style={{ color: 'var(--ink-soft)' }} />
                   <input
                     type="text"
-                    placeholder={activePage === 'products' ? 'Search products…' : activePage === 'tracking' ? 'Search order, customer, city, AWB…' : 'Search order, customer, city, product…'}
+                    placeholder={activePage === 'products' || activePage === 'stock' ? 'Search products…' : activePage === 'tracking' ? 'Search order, customer, city, AWB…' : 'Search order, customer, city, product…'}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -211,7 +238,9 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
           )}
           {activePage === 'orders' && <SellerOrders orders={myOrders} mixedOrderIds={mixedOrderIds} searchQuery={searchQuery} onAdvance={advanceOrder} />}
           {activePage === 'products' && <SellerProducts products={myProducts} orders={myOrders} searchQuery={searchQuery} onEdit={openEdit} />}
+          {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} />}
           {activePage === 'tracking' && <SellerTracking orders={myOrders} searchQuery={searchQuery} />}
+          {activePage === 'regional' && <SellerRegional seller={seller} orders={myOrders} onToast={showToast} />}
           {activePage === 'payouts' && <SellerPayouts orders={myOrders} seller={seller} />}
           {activePage === 'reports' && <SellerReports seller={seller} orders={myOrders} products={myProducts} onToast={showToast} />}
         </main>
@@ -242,6 +271,31 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
             <div className="modal-footer">
               <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button type="submit" className="btn-primary">Save</button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal isOpen={restocking !== null} onClose={() => setRestocking(null)} title={`Restock · ${restocking?.name ?? ''}`} closeOnBackdrop={false}>
+        {restocking && (
+          <form onSubmit={saveRestock}>
+            <p className="loc" style={{ marginBottom: 14 }}>
+              In stock now: <strong>{restocking.stock_quantity}</strong> units ({restocking.size}). The units you add are counted straight away.
+            </p>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="rs-units">Units received</label>
+                <input id="rs-units" type="number" min={1} step={1} required value={restockUnits} onChange={e => setRestockUnits(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label htmlFor="rs-note">Batch / note (optional)</label>
+                <input id="rs-note" type="text" placeholder="e.g. Batch 24-09, invoice 1182" value={restockNote} onChange={e => setRestockNote(e.target.value)} />
+              </div>
+            </div>
+            <div className="form-total">New stock: <strong>{restocking.stock_quantity + Math.max(0, Math.round(Number(restockUnits)) || 0)}</strong> units</div>
+            <div className="modal-footer">
+              <button type="button" className="btn-secondary" onClick={() => setRestocking(null)}>Cancel</button>
+              <button type="submit" className="btn-primary">Add to stock</button>
             </div>
           </form>
         )}

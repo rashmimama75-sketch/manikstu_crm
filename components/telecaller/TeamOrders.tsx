@@ -125,7 +125,7 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
         <button className="score score-btn" onClick={() => { setAttention('late'); setPage(0); }}><div className={`num ${late ? 'text-warn' : ''}`}>{late}</div><div className="label">Late with courier</div></button>
       </div>
 
-      <div className="panel">
+      <div className="panel" style={{ marginBottom: 20 }}>
         <div className="stage-flow" role="tablist" aria-label="Tracking stage">
           {STAGE_FLOW.map((s, i) => (
             <React.Fragment key={s}>
