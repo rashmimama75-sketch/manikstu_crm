@@ -168,7 +168,7 @@ export default function TeamInventory({ orders, complaints, searchQuery, onToast
         </div>
       </div>
 
-      <div className="panel">
+      <div className="panel" style={{ marginBottom: 20 }}>
         <div className="table-wrap">
           <table className="orders-table stock-table">
             <thead>

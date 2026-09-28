@@ -200,7 +200,7 @@ export default function RegionalReportView({ orders, onOpenOrder, onToast }: Pro
         <div className="score"><div className={`num ${cashDue ? 'text-warn' : ''}`}>{rupeesShort(cashDue)}</div><div className="label">Cash to collect (COD)</div></div>
       </div>
 
-      <div className="panel">
+      <div className="panel" style={{ marginBottom: 20 }}>
         <div className="panel-head">
           <h2>{areaLabel}</h2>
           <span className="panel-meta">{PERIOD_LABEL[period]}</span>

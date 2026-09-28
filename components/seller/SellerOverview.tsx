@@ -12,11 +12,12 @@ interface Props {
   products: CatalogProduct[];
   onNavigate: (page: string) => void;
   onAdvance: (orderId: number, to: OrderStatus) => void;
+  onOpenConfirm: (orderId: number) => void;
 }
 
 const dateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-export default function SellerOverview({ orders, products, onNavigate, onAdvance }: Props) {
+export default function SellerOverview({ orders, products, onNavigate, onAdvance, onOpenConfirm }: Props) {
   const month = orders.filter(o => o.order.created_at.startsWith(MONTH) && counts(o));
   const monthGross = month.reduce((s, o) => s + o.gross, 0);
   const monthUnits = month.reduce((s, o) => s + o.units, 0);
@@ -105,20 +106,29 @@ export default function SellerOverview({ orders, products, onNavigate, onAdvance
               {toShip.length === 0 && (
                 <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '24px 0' }}>Nothing waiting. Every order is shipped.</td></tr>
               )}
-              {toShip.slice(0, 6).map(o => {
-                const step = NEXT_STEP[o.order.status];
-                return (
-                  <tr key={o.order.id}>
-                    <td className="cust">{o.order.order_number}</td>
-                    <td>{shortDate(o.order.created_at)}</td>
-                    <td>{o.order.customer_name}<div className="loc">{o.order.city}</div></td>
-                    <td>{o.items.map(i => `${i.product_name} × ${i.quantity}`).join(', ')}</td>
-                    <td className="num-col strong">{rupees(o.gross)}</td>
-                    <td><span className={`chip ${ORDER_CHIP[o.order.status]}`}>{ORDER_STATUS_LABEL[o.order.status]}</span></td>
-                    <td>{step && <button className="btn-primary btn-small" onClick={() => onAdvance(o.order.id, step.to)}>{step.label}</button>}</td>
-                  </tr>
-                );
-              })}
+              {toShip.slice(0, 6).map(o => (
+                <tr key={o.order.id}>
+                  <td className="cust">{o.order.order_number}</td>
+                  <td>{shortDate(o.order.created_at)}</td>
+                  <td>{o.order.customer_name}<div className="loc">{o.order.city}</div></td>
+                  <td>{o.items.map(i => `${i.product_name} × ${i.quantity}`).join(', ')}</td>
+                  <td className="num-col strong">{rupees(o.gross)}</td>
+                  <td><span className={`chip ${ORDER_CHIP[o.order.status]}`}>{ORDER_STATUS_LABEL[o.order.status]}</span></td>
+                  <td>
+                    <div className="row-actions">
+                      {o.order.status === 'pending' && (
+                        <button className="btn-primary btn-small" onClick={() => onOpenConfirm(o.order.id)}>Confirm</button>
+                      )}
+                      {o.order.status === 'confirmed' && (
+                        <>
+                          <button className="btn-secondary btn-small" onClick={() => onOpenConfirm(o.order.id)}>View</button>
+                          <button className="btn-primary btn-small" onClick={() => onAdvance(o.order.id, NEXT_STEP.confirmed!.to)}>{NEXT_STEP.confirmed!.label}</button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

@@ -1854,6 +1854,69 @@ code { font-size: 11.5px; background: var(--line); border-radius: 4px; padding: 
 .ce-call-status { flex: 1; min-width: 160px; font-size: 13px; color: var(--ink-soft); }
 .ce-callbar .btn-secondary { display: inline-flex; align-items: center; gap: 6px; }
 
+/* Seller stock page */
+.stock-cover { min-width: 120px; }
+.stock-cover > span:last-child { display: block; font-size: 12px; margin-top: 4px; }
+.stock-bar { display: block; width: 100px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.stock-bar span { display: block; height: 100%; background: var(--leaf); border-radius: 3px; }
+.stock-bar span.warn { background: var(--gold); }
+.stock-bar span.late { background: var(--rust); }
+.stock-btn { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.stock-delta { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stock-delta.in { color: var(--leaf); }
+.stock-delta.out { color: var(--ink-soft); }
+.stock-moves { max-height: 360px; overflow-y: auto; }
+.stock-head { align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.stock-head .loc { font-size: 12px; margin-top: 3px; }
+
+/* Region dropdown: list always opens below the field */
+.stock-filters { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-left: auto; }
+.region-dd { position: relative; display: flex; align-items: center; gap: 8px; }
+.region-dd-label { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.region-dd-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 220px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+.region-dd-field:hover, .region-dd-field.open { border-color: var(--leaf); }
+.region-dd-field:focus-visible { outline: 2px solid var(--leaf); outline-offset: 1px; }
+.region-dd-field svg { color: var(--ink-soft); transition: transform 0.15s ease; }
+.region-dd-field.open svg { transform: rotate(180deg); }
+.region-dd-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 100%;
+  width: max-content;
+  max-height: 320px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-soft) transparent;
+}
+.region-dd-group { font-size: 11px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.4px; padding: 8px 10px 4px; }
+.region-dd-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.region-dd-option.indent { padding-left: 22px; }
+.region-dd-option.active { background: var(--page-bg); }
+.region-dd-option.selected { font-weight: 600; color: var(--leaf); }
+
 /* Clickable scoreboard cards (Call desk sections) */
 .score-btn {
   text-align: left;

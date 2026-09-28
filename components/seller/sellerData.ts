@@ -16,6 +16,13 @@ export interface SellerOrder {
   payout: PayoutStatus;
 }
 
+/** Order/tracking reference a seller types in by hand when confirming an order (sample data, not backed by the API yet). */
+export interface ShipmentDetails {
+  orderNo: string;
+  trackingNo: string;
+  confirmedAt: string;
+}
+
 export type PayoutStatus = 'Paid out' | 'Due' | 'On hold' | 'None';
 
 /** Chip class for each payout status. */
