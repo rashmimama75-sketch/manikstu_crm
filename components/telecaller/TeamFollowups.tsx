@@ -117,9 +117,12 @@ export default function TeamFollowups({ data, searchQuery, initialCaller, onReas
                 const last = lastCallFor(f.lead_id, data.activities);
                 return (
                   <tr key={f.id}>
-                    <td className={tab === 'Overdue' ? 'text-warn' : undefined}>
-                      {f.due_at.startsWith(TODAY) ? `Today, ${time12(f.due_at)}` : shortDate(f.due_at)}
-                      {tab === 'Overdue' && <div className="loc">{Math.round((dayStart(TODAY) - dayStart(f.due_at)) / 86_400_000)} days late</div>}
+                    <td className={`due-cell ${tab === 'Overdue' ? 'text-warn' : ''}`}>
+                      <div>{f.due_at.startsWith(TODAY) ? `Today, ${time12(f.due_at)}` : shortDate(f.due_at)}</div>
+                      {tab === 'Overdue' && (() => {
+                        const late = Math.round((dayStart(TODAY) - dayStart(f.due_at)) / 86_400_000);
+                        return <div className="loc">{late} {late === 1 ? 'day' : 'days'} late</div>;
+                      })()}
                     </td>
                     <td>{callerName(f.caller_id)}</td>
                     <td className="cust">
