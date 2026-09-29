@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Moon, Search, Sun } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import HeaderFrieze from './HeaderFrieze';
 import FooterFrieze from './FooterFrieze';
 import LogoutButton from './LogoutButton';
@@ -33,7 +33,6 @@ interface Props {
 
 export default function SellerDashboard({ user, seller, initialOrders, initialProducts, mixedOrderIds }: Props) {
   const [activePage, setActivePage] = useState('overview');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -43,10 +42,6 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
 
   const myProducts = useMemo(() => catalog.filter(p => seller.productIds.includes(p.id)), [catalog, seller]);
   const myOrders = useMemo(() => sellerOrders(orders, seller, catalog), [orders, seller, catalog]);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -291,13 +286,6 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
                   />
                 </div>
               )}
-              <button
-                className="icon-btn"
-                title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
-                onClick={() => setTheme(t => (t === 'light' ? 'dark' : 'light'))}
-              >
-                {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-              </button>
             </div>
           </div>
 

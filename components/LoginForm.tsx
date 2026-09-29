@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 
 const DEMO_ACCOUNTS = [
-  { label: 'Manager', email: 'smurti@manikstu.in', password: 'manager123' },
   { label: 'Telecalling Head', email: 'pradeep@manikstu.in', password: 'telecaller123' },
   { label: 'Calling executive', email: 'bikash@manikstu.in', password: 'executive123' },
   { label: 'Seller', email: 'sanjay@manikstu.in', password: 'seller123' },

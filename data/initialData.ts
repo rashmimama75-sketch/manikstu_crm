@@ -57,14 +57,6 @@ export interface Product {
   quantity: number;
 }
 
-export interface StaffCard {
-  id: string;
-  name: string;
-  role: string;
-  location: string;
-  stage: 'Applied' | 'Documents' | 'Training' | 'Active';
-}
-
 export interface Franchise {
   id: string;
   name: string;
@@ -82,19 +74,6 @@ export interface FPO {
   members: number;
   primaryCrop: string;
   status: 'Active' | 'Onboarding';
-}
-
-export interface InventoryItem {
-  id: string;
-  product: string;
-  category: string;
-  warehouse: 'Bhubaneswar' | 'Cuttack' | 'Balasore' | 'Berhampur';
-  stock: number;
-  unit: string;
-  reorderLevel: number;
-  leadTime: string;
-  lastRestocked: string;
-  status: 'OK' | 'Low stock' | 'Out of stock';
 }
 
 export interface Transaction {
@@ -177,18 +156,6 @@ export const INITIAL_PRODUCTS: Product[] = [
   { id: 'P-8', name: 'Organic Turmeric Powder', category: 'Oils & produce', price: '₹520/pack', icon: '🧴', stockStatus: 'In stock', quantity: 210 }
 ];
 
-export const INITIAL_STAFF: StaffCard[] = [
-  { id: 'S-1', name: 'Debendra Swain', role: 'Telecaller · Cuttack', location: 'Cuttack', stage: 'Applied' },
-  { id: 'S-2', name: 'Manisha Jena', role: 'Franchise Associate · Puri', location: 'Puri', stage: 'Applied' },
-  { id: 'S-3', name: 'Rashmi Panda', role: 'Telecaller · Bhubaneswar', location: 'Bhubaneswar', stage: 'Applied' },
-  { id: 'S-4', name: 'Ananya Mishra', role: 'Telecaller · Bhubaneswar', location: 'Bhubaneswar', stage: 'Documents' },
-  { id: 'S-5', name: 'Prasant Behera', role: 'Warehouse Staff · Cuttack', location: 'Cuttack', stage: 'Documents' },
-  { id: 'S-6', name: 'Bikram Rout', role: 'Franchise Manager · Balasore', location: 'Balasore', stage: 'Training' },
-  { id: 'S-7', name: 'Lopamudra Sethi', role: 'Telecaller · Berhampur', location: 'Berhampur', stage: 'Training' },
-  { id: 'S-8', name: 'Sujata Swain', role: 'Staff Onboarding Lead', location: 'Bhubaneswar', stage: 'Active' },
-  { id: 'S-9', name: 'Ashok Nayak', role: 'Franchise Manager · Rourkela', location: 'Rourkela', stage: 'Active' }
-];
-
 export const INITIAL_FRANCHISES: Franchise[] = [
   { id: 'FR-1', name: 'Manikstu Agri Hub', location: 'Cuttack', owner: 'Bikram Rout', ordersThisMonth: 210, revenue: '₹1.4L', status: 'Active' },
   { id: 'FR-2', name: 'Manikstu Agri Hub', location: 'Berhampur', owner: 'Lopamudra Sethi', ordersThisMonth: 178, revenue: '₹1.1L', status: 'Active' },
@@ -202,19 +169,6 @@ export const INITIAL_FPOS: FPO[] = [
   { id: 'FPO-1', name: "Mayurbhanj Farmers' Producer Org.", location: 'Baripada', members: 420, primaryCrop: 'Paddy', status: 'Onboarding' },
   { id: 'FPO-2', name: 'Ganjam Agri Producer Co.', location: 'Berhampur', members: 610, primaryCrop: 'Vegetables', status: 'Active' },
   { id: 'FPO-3', name: 'Balasore Farmers Collective', location: 'Balasore', members: 385, primaryCrop: 'Mustard', status: 'Active' }
-];
-
-export const INITIAL_INVENTORY: InventoryItem[] = [
-  { id: 'INV-101', product: 'Certified Paddy Seed (Swarna)', category: 'Seeds', warehouse: 'Bhubaneswar', stock: 18, unit: 'bags', reorderLevel: 40, leadTime: '7 days', lastRestocked: '5 days ago', status: 'Low stock' },
-  { id: 'INV-102', product: 'Cold-Pressed Mustard Oil', category: 'Oils & produce', warehouse: 'Cuttack', stock: 9, unit: 'units', reorderLevel: 30, leadTime: '10 days', lastRestocked: '8 days ago', status: 'Low stock' },
-  { id: 'INV-103', product: 'Drip Irrigation Kit', category: 'Equipment', warehouse: 'Cuttack', stock: 6, unit: 'sets', reorderLevel: 15, leadTime: '14 days', lastRestocked: '12 days ago', status: 'Low stock' },
-  { id: 'INV-104', product: 'Mustard Seed', category: 'Seeds', warehouse: 'Berhampur', stock: 28, unit: 'kg', reorderLevel: 35, leadTime: '6 days', lastRestocked: '9 days ago', status: 'Low stock' },
-  { id: 'INV-105', product: 'Neem-based Pesticide', category: 'Crop protection', warehouse: 'Bhubaneswar', stock: 31, unit: 'units', reorderLevel: 40, leadTime: '5 days', lastRestocked: '3 days ago', status: 'OK' },
-  { id: 'INV-106', product: 'Vermicompost Fertilizer', category: 'Fertilizer & soil', warehouse: 'Balasore', stock: 62, unit: 'bags', reorderLevel: 50, leadTime: '4 days', lastRestocked: '2 days ago', status: 'OK' },
-  { id: 'INV-107', product: 'Vegetable Seed Kit', category: 'Seeds', warehouse: 'Bhubaneswar', stock: 44, unit: 'kits', reorderLevel: 40, leadTime: '6 days', lastRestocked: '6 days ago', status: 'OK' },
-  { id: 'INV-108', product: 'Organic Turmeric Powder', category: 'Oils & produce', warehouse: 'Bhubaneswar', stock: 120, unit: 'packs', reorderLevel: 60, leadTime: '3 days', lastRestocked: '1 day ago', status: 'OK' },
-  { id: 'INV-109', product: 'Certified Wheat Seed', category: 'Seeds', warehouse: 'Cuttack', stock: 52, unit: 'bags', reorderLevel: 40, leadTime: '7 days', lastRestocked: '4 days ago', status: 'OK' },
-  { id: 'INV-110', product: 'Organic Fertilizer Granules', category: 'Fertilizer & soil', warehouse: 'Berhampur', stock: 40, unit: 'bags', reorderLevel: 40, leadTime: '5 days', lastRestocked: '2 days ago', status: 'OK' }
 ];
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [

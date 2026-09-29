@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { SALES_ORDERS, TELECALLERS, TODAY } from '../../data/managerDashboard';
+import { TELECALLERS, TODAY } from '../../data/managerDashboard';
 import { ago, pct, rupees, rupeesShort, shortDate, shortDateTime } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
 import ExportMenu from '../ExportMenu';
@@ -9,7 +9,7 @@ import { TargetRing } from '../telecaller/shared';
 import {
   OUTCOMES, PERIOD_LABEL, Period, TeamData, fmtDuration, isOverdue, productName, salesByMonth, stageName, time12, verticalName,
 } from '../telecaller/tcData';
-import { CALL_TARGET_DAILY, ExecMetrics, allExecMetrics, callsPerDay, funnel, initials, teamAverage } from './telecallingMetrics';
+import { CALL_TARGET_DAILY, ExecMetrics, allExecMetrics, callsPerDay, initials, teamAverage } from './telecallingMetrics';
 
 const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted' };
 
@@ -23,7 +23,6 @@ interface Props {
 
 /** List of telecalling executives; tapping one shows everything about them. Read-only. */
 export default function TelecallingExecutivesView({ data, selectedId, onSelect, searchQuery, onToast }: Props) {
-  const [region, setRegion] = useState('all');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [period, setPeriod] = useState<Period>('month');
   const all = useMemo(() => allExecMetrics(data, period), [data, period]);
@@ -33,11 +32,9 @@ export default function TelecallingExecutivesView({ data, selectedId, onSelect, 
 
   const q = searchQuery.trim().toLowerCase();
   const rows = all.filter(m =>
-    (region === 'all' || m.t.region === region) &&
     (status === 'all' || (status === 'active') === m.t.is_active) &&
     (!q || [m.t.name, m.t.region].some(v => v.toLowerCase().includes(q))),
   );
-  const regions = Array.from(new Set(TELECALLERS.map(t => t.region)));
 
   /** One row per executive, for the chosen period. */
   const teamReport = async (format: ExportFormat) => {
@@ -46,7 +43,7 @@ export default function TelecallingExecutivesView({ data, selectedId, onSelect, 
       await exportTable(format, {
         filename: `executive-reports-${period}-${TODAY}`,
         title: 'Telecalling executive reports',
-        subtitle: `${PERIOD_LABEL[period]} · ${rows.length} executives${region === 'all' ? '' : ` · ${region}`} · exported ${shortDate(TODAY)}`,
+        subtitle: `${PERIOD_LABEL[period]} · ${rows.length} executives · exported ${shortDate(TODAY)}`,
         columns: [
           { header: 'Executive', width: 18 }, { header: 'Region', width: 12 }, { header: 'Status', width: 9 },
           { header: 'Calls', width: 7 }, { header: 'Connected', width: 9 }, { header: 'Connect %', width: 9 }, { header: 'Avg talk', width: 9 },
@@ -80,10 +77,6 @@ export default function TelecallingExecutivesView({ data, selectedId, onSelect, 
         <div className="toolbar-actions">
           <select className="filter-select" value={period} onChange={e => setPeriod(e.target.value as Period)} aria-label="Period">
             {(['today', '7d', 'month'] as Period[]).map(p => <option key={p} value={p}>{PERIOD_LABEL[p]}</option>)}
-          </select>
-          <select className="filter-select" value={region} onChange={e => setRegion(e.target.value)} aria-label="Region">
-            <option value="all">All regions</option>
-            {regions.map(r => <option key={r}>{r}</option>)}
           </select>
           <ExportMenu onExport={teamReport} label="Download all" />
         </div>
@@ -143,7 +136,6 @@ function ExecutiveDetail({ data, id, onBack, onToast }: { data: TeamData; id: nu
   const leadName = (leadId: number) => data.leads.find(l => l.id === leadId)?.customer_name ?? '—';
   const fus = data.followups.filter(f => f.caller_id === id);
   const upcoming = fus.filter(f => f.status !== 'done').sort((a, b) => a.due_at.localeCompare(b.due_at)).slice(0, 6);
-  const unshipped = SALES_ORDERS.filter(o => o.caller_id === id && (o.status === 'pending' || o.status === 'confirmed'));
 
   // Compare with the average active executive
   const compare: { label: string; mine: number | null; avg: number | null; fmt: (n: number) => string; higherIsBetter: boolean }[] = [
@@ -227,37 +219,20 @@ function ExecutiveDetail({ data, id, onBack, onToast }: { data: TeamData; id: nu
       </div>
 
       <div className="grid equal-2">
-        <div className="panel">
-          <div className="panel-head"><h2>Leads</h2><span className="panel-meta">{m.leadsTotal} assigned</span></div>
-          <div className="mini-stats">
-            <div className="mini-stat"><div className="mini-num">{m.openLeads}</div><div className="mini-label">open</div></div>
-            <div className="mini-stat"><div className="mini-num">{m.newLeads7d}</div><div className="mini-label">new this week</div></div>
-            <div className={`mini-stat ${m.staleLeads ? 'warn' : ''}`}><div className="mini-num">{m.staleLeads}</div><div className="mini-label">untouched 3+ days</div></div>
-            <div className="mini-stat"><div className="mini-num">{m.wonLeads} / {m.lostLeads}</div><div className="mini-label">won / lost</div></div>
-          </div>
-          {m.verticalIds.map(v => (
-            <div key={v} style={{ marginTop: 10 }}>
-              <div className="od-label">{verticalName(v)}</div>
-              <HBarList rows={funnel(data, v, id).map(s => ({ key: String(s.st.id), label: s.st.name, value: s.n, display: String(s.n), tip: `${s.st.name}: ${s.n} leads` }))} />
-            </div>
-          ))}
-        </div>
-
-        <div className="panel">
+        <div className="panel calls-panel">
           <div className="panel-head"><h2>Calls</h2><span className="panel-meta">{PERIOD_LABEL[period]}</span></div>
           <HBarList rows={OUTCOMES.map(o => ({ key: o, label: o, value: m.outcomes[o], display: `${m.outcomes[o]} · ${pct(m.outcomes[o], m.calls)}%`, tip: `${o}: ${m.outcomes[o]} calls` }))} />
           <div className="od-label" style={{ marginTop: 16 }}>Calls per day · last 14 days</div>
-          <div className="bar-chart dense mini-trend">
+          <div className="bar-chart dense">
             {days.map((d, i) => (
               <div key={d.key} className="bc-col" data-tip={`${shortDate(d.key)}: ${d.calls} calls, ${d.connected} connected`}>
                 <div className={`bc-bar ${i === 13 ? 'now' : ''}`} style={{ height: `${(d.calls / maxDay) * 100}%` }} />
+                <div className="bc-label">{Number(d.key.slice(8))}</div>
               </div>
             ))}
           </div>
         </div>
-      </div>
 
-      <div className="grid equal-2">
         <div className="panel">
           <div className="panel-head"><h2>Follow-ups</h2><span className="panel-meta">{m.keptRate === null ? 'none yet' : `${m.keptRate}% kept`}</span></div>
           <div className="mini-stats">
@@ -275,22 +250,6 @@ function ExecutiveDetail({ data, id, onBack, onToast }: { data: TeamData; id: nu
               </li>
             ))}
           </ul>
-        </div>
-
-        <div className="panel">
-          <div className="panel-head"><h2>Sales</h2><span className="panel-meta">{rupees(mySales.reduce((a, s) => a + s.amount, 0))} all time</span></div>
-          <div className="bar-chart">
-            {months.map((x, i) => (
-              <div key={x.key} className="bc-col" data-tip={`${x.label}: ${rupees(x.amount)} · ${x.count} sales`}>
-                <div className={`bc-bar ${i === 5 ? 'now' : ''}`} style={{ height: `${(x.amount / maxMonth) * 100}%` }} />
-                <div className="bc-label">{x.label}</div>
-              </div>
-            ))}
-          </div>
-          <div className="od-label" style={{ marginTop: 16 }}>Top products</div>
-          {byProduct.length === 0 ? <div className="loc">No sales yet.</div> : (
-            <HBarList rows={byProduct.map(([pid, amt]) => ({ key: String(pid), label: productName(pid), value: amt, display: rupeesShort(amt), tip: `${productName(pid)}: ${rupees(amt)}` }))} />
-          )}
         </div>
       </div>
 
@@ -316,21 +275,19 @@ function ExecutiveDetail({ data, id, onBack, onToast }: { data: TeamData; id: nu
         </div>
 
         <div className="panel">
-          <div className="panel-head"><h2>Customers</h2></div>
-          <div className="mini-stats">
-            <div className="mini-stat"><div className="mini-num">{m.openComplaints}</div><div className="mini-label">open complaints</div></div>
-            <div className="mini-stat"><div className="mini-num">{m.resolvedComplaints}</div><div className="mini-label">complaints resolved</div></div>
-            <div className="mini-stat"><div className="mini-num">{unshipped.length}</div><div className="mini-label">orders not shipped</div></div>
-          </div>
-          <ul className="attn-list">
-            {unshipped.length === 0 && <li><div className="action">All their orders have shipped.</div></li>}
-            {unshipped.slice(0, 5).map(o => (
-              <li key={o.id}>
-                <div><div className="name">{o.customer_name} · {o.order_number}</div><div className="action">{o.items.map(i => `${i.product_name} × ${i.quantity}`).join(', ')}</div></div>
-                <div className="attn-side"><span className="loc">{o.status} · {shortDate(o.created_at)}</span></div>
-              </li>
+          <div className="panel-head"><h2>Sales</h2><span className="panel-meta">{rupees(mySales.reduce((a, s) => a + s.amount, 0))} all time</span></div>
+          <div className="bar-chart">
+            {months.map((x, i) => (
+              <div key={x.key} className="bc-col" data-tip={`${x.label}: ${rupees(x.amount)} · ${x.count} sales`}>
+                <div className={`bc-bar ${i === 5 ? 'now' : ''}`} style={{ height: `${(x.amount / maxMonth) * 100}%` }} />
+                <div className="bc-label">{x.label}</div>
+              </div>
             ))}
-          </ul>
+          </div>
+          <div className="od-label" style={{ marginTop: 16 }}>Top products</div>
+          {byProduct.length === 0 ? <div className="loc">No sales yet.</div> : (
+            <HBarList rows={byProduct.map(([pid, amt]) => ({ key: String(pid), label: productName(pid), value: amt, display: rupeesShort(amt), tip: `${productName(pid)}: ${rupees(amt)}` }))} />
+          )}
         </div>
       </div>
 

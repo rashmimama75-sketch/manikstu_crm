@@ -11,13 +11,12 @@ interface UserRecord extends SessionUser {
 const USERS: UserRecord[] = [
   {
     id: 'u-mgr-042',
-    email: 'smurti@manikstu.in',
+    email: 'manager@manikstu.com',
     name: 'Smurti Nayak',
     initials: 'SN',
     role: 'manager',
     staffId: 'MNK-MGR-042',
-    // manager123
-    passwordHash: 'eda874134d519c6317eead838eeae774:de6f6c800cef09fc4d1881826d7bafe161faee6fb06d195dd65d9abd537a301b',
+    passwordHash: '418711d3c11629857386cd13a5caa7cb:edf52beb1f3498d3abd6d40702ad4884a1bd4262f72276c01931f1873a0348d4',
   },
   {
     id: 'u-tl-101',

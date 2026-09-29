@@ -8,21 +8,19 @@ import {
   PaymentStatus,
   OrderSource,
 } from '../../data/managerDashboard';
-import { MONTH, ORDER_CHIP, daysBefore, nowStamp, rupees, rupeesShort, shortDate, shortDateTime } from '../../lib/format';
+import { MONTH, ORDER_CHIP, daysBefore, rupees, rupeesShort, shortDate, shortDateTime } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
 import ExportMenu from '../ExportMenu';
 
+// The manager sees orders read-only: status, payment and details, no changes.
 interface OrdersViewProps {
   orders: SalesOrder[];
-  onOrdersChange: React.Dispatch<React.SetStateAction<SalesOrder[]>>;
-  onOpenNewOrderModal: () => void;
   onToast: (message: string) => void;
   initialQuery?: string;
 }
 
 const STATUSES: OrderStatus[] = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
 const FLOW: OrderStatus[] = ['pending', 'confirmed', 'shipped', 'delivered'];
-const NEXT_LABEL: Partial<Record<OrderStatus, string>> = { pending: 'Confirm', confirmed: 'Ship', shipped: 'Deliver' };
 const PAYMENT_CHIP: Record<PaymentStatus, string> = { paid: 'delivered', unpaid: 'pending', refunded: 'muted' };
 const PAGE_SIZE = 15;
 
@@ -30,10 +28,6 @@ type Alert = 'stale-pending' | 'unpaid-delivered' | 'slow-shipping';
 type DateRange = 'today' | '7d' | 'month' | 'all';
 
 const callerName = (id: number | null) => (id === null ? 'Manager' : TELECALLERS.find(t => t.id === id)?.name ?? '—');
-const nextStatus = (s: OrderStatus): OrderStatus | null => {
-  const i = FLOW.indexOf(s);
-  return i >= 0 && i < FLOW.length - 1 ? FLOW[i + 1] : null;
-};
 const lastChange = (o: SalesOrder, s: OrderStatus) => [...o.status_history].reverse().find(h => h.status === s)?.at ?? o.created_at;
 
 const ALERTS: Record<Alert, { label: string; test: (o: SalesOrder) => boolean }> = {
@@ -97,7 +91,7 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid #ddd;font-size:14px}.r
   win.print();
 }
 
-export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal, onToast, initialQuery }: OrdersViewProps) {
+export default function OrdersView({ orders, onToast, initialQuery }: OrdersViewProps) {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [sourceFilter, setSourceFilter] = useState<OrderSource | 'all'>('all');
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
@@ -105,9 +99,7 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
   const [alert, setAlert] = useState<Alert | null>(null);
   const [query, setQuery] = useState(initialQuery ?? '');
   const [page, setPage] = useState(0);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
-  const [noteDraft, setNoteDraft] = useState('');
 
   // Summary tiles: this month, all sources
   const month = orders.filter(o => o.created_at.startsWith(MONTH));
@@ -144,47 +136,9 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
   const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
   const open = orders.find(o => o.id === openId) ?? null;
 
-  const resetPage = () => { setPage(0); setSelected(new Set()); };
+  const resetPage = () => setPage(0);
 
-  // ---- Updates -----------------------------------------------------------------------------
-  /** Applies `change` to each order in `ids`; `change` returns null when the action doesn't apply. */
-  const update = (ids: number[], change: (o: SalesOrder) => SalesOrder | null, message: string) => {
-    let changed = 0;
-    const next = orders.map(o => {
-      if (!ids.includes(o.id)) return o;
-      const updated = change(o);
-      if (updated) changed++;
-      return updated ?? o;
-    });
-    if (changed === 0) {
-      onToast(ids.length === 1 ? 'That action doesn’t apply to this order' : 'None of the selected orders are at the right stage');
-      return;
-    }
-    onOrdersChange(next);
-    const skipped = ids.length - changed;
-    onToast(message.replace('{n}', String(changed)) + (skipped > 0 ? ` · ${skipped} skipped (wrong stage)` : ''));
-  };
-
-  const setStatus = (ids: number[], status: OrderStatus) =>
-    update(ids, o => {
-      const ok = status === 'cancelled' ? o.status !== 'delivered' && o.status !== 'cancelled' : nextStatus(o.status) === status;
-      return ok ? { ...o, status, status_history: [...o.status_history, { status, at: nowStamp() }] } : null;
-    }, ids.length === 1 ? `Order marked ${status}` : `{n} orders marked ${status}`);
-
-  const setPayment = (ids: number[], payment_status: PaymentStatus) =>
-    update(ids, o => {
-      const ok = payment_status === 'paid'
-        ? o.payment_status === 'unpaid' && o.status !== 'cancelled'
-        : o.payment_status === 'paid' && o.status === 'cancelled';
-      return ok ? { ...o, payment_status } : null;
-    }, ids.length === 1 ? `Payment marked ${payment_status}` : `{n} orders marked ${payment_status}`);
-
-  const saveNote = (id: number) => {
-    onOrdersChange(prev => prev.map(o => (o.id === id ? { ...o, notes: noteDraft.trim() || null } : o)));
-    onToast('Note saved');
-  };
-
-  const openOrder = (o: SalesOrder) => { setOpenId(o.id); setNoteDraft(o.notes ?? ''); };
+  const openOrder = (o: SalesOrder) => setOpenId(o.id);
 
   const runExport = async (rows: SalesOrder[], format: ExportFormat, scope: string) => {
     if (rows.length === 0) {
@@ -198,20 +152,6 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
       onToast('Export failed. Please try again.');
     }
   };
-
-  // ---- Selection ---------------------------------------------------------------------------
-  const allOnPageSelected = pageRows.length > 0 && pageRows.every(o => selected.has(o.id));
-  const toggle = (id: number) => setSelected(prev => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
-  const togglePage = () => setSelected(prev => {
-    const next = new Set(prev);
-    pageRows.forEach(o => (allOnPageSelected ? next.delete(o.id) : next.add(o.id)));
-    return next;
-  });
-  const selectedIds = Array.from(selected);
 
   return (
     <>
@@ -243,9 +183,9 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
         </div>
       </div>
 
-      {/* 2. Needs-action strip */}
+      {/* 2. Needs-attention strip (filters only) */}
       <div className="alert-strip">
-        <span className="alert-strip-label">Needs action</span>
+        <span className="alert-strip-label">Needs attention</span>
         {(Object.keys(ALERTS) as Alert[]).map(key => {
           const n = orders.filter(ALERTS[key].test).length;
           return (
@@ -261,26 +201,8 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
         {alert && <button className="link-btn clear-alert" onClick={() => { setAlert(null); resetPage(); }}>Show all orders</button>}
       </div>
 
-      {/* 3. Filters */}
-      <div className="page-toolbar">
-        <div className="filters">
-          {(['all', ...STATUSES] as const).map(s => (
-            <button
-              key={s}
-              className={`filter-chip ${statusFilter === s ? 'active' : ''}`}
-              onClick={() => { setStatusFilter(s); resetPage(); }}
-            >
-              <span style={{ textTransform: 'capitalize' }}>{s}</span> ({s === 'all' ? baseFiltered.length : baseFiltered.filter(o => o.status === s).length})
-            </button>
-          ))}
-        </div>
-        <div className="toolbar-actions">
-          <ExportMenu onExport={format => runExport(filtered, format, 'current filters')} />
-          <button className="btn-primary" onClick={onOpenNewOrderModal}>+ New Order</button>
-        </div>
-      </div>
-
-      <div className="filter-row">
+      {/* 3. Filters: search, status, source, payment and date on one line, export at the end */}
+      <div className="filter-row one-line">
         <input
           className="filter-input"
           type="search"
@@ -288,6 +210,13 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
           value={query}
           onChange={e => { setQuery(e.target.value); resetPage(); }}
         />
+        <select className="filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value as OrderStatus | 'all'); resetPage(); }} aria-label="Status">
+          {(['all', ...STATUSES] as const).map(st => (
+            <option key={st} value={st}>
+              {st === 'all' ? 'All statuses' : st[0].toUpperCase() + st.slice(1)} ({st === 'all' ? baseFiltered.length : baseFiltered.filter(o => o.status === st).length})
+            </option>
+          ))}
+        </select>
         <select className="filter-select" value={sourceFilter} onChange={e => { setSourceFilter(e.target.value as OrderSource | 'all'); resetPage(); }} aria-label="Source">
           <option value="all">All sources</option>
           <option value="website">Website</option>
@@ -305,29 +234,18 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
           <option value="month">This month</option>
           <option value="all">All time</option>
         </select>
-        {alert && <span className="filter-note">Other filters are paused while a “Needs action” filter is on.</span>}
-      </div>
-
-      {/* 4. Bulk actions */}
-      {selected.size > 0 && (
-        <div className="bulk-bar">
-          <strong>{selected.size} selected</strong>
-          <button className="btn-secondary btn-small" onClick={() => setStatus(selectedIds, 'confirmed')}>Confirm</button>
-          <button className="btn-secondary btn-small" onClick={() => setStatus(selectedIds, 'shipped')}>Mark shipped</button>
-          <button className="btn-secondary btn-small" onClick={() => setStatus(selectedIds, 'delivered')}>Mark delivered</button>
-          <button className="btn-secondary btn-small" onClick={() => setPayment(selectedIds, 'paid')}>Mark paid</button>
-          <ExportMenu small label="Export selected" onExport={format => runExport(orders.filter(o => selected.has(o.id)), format, 'selected')} />
-          <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
+        <div className="filter-row-end">
+          <ExportMenu onExport={format => runExport(filtered, format, 'current filters')} />
         </div>
-      )}
+      </div>
+      {alert && <div className="filter-note filter-note-below">Other filters are paused while a “Needs attention” filter is on.</div>}
 
-      {/* 5. Orders table */}
+      {/* 4. Orders table */}
       <div className="panel">
         <div className="table-wrap">
           <table className="orders-table">
             <thead>
               <tr>
-                <th><input type="checkbox" checked={allOnPageSelected} onChange={togglePage} aria-label="Select all on this page" /></th>
                 <th>Order</th>
                 <th>Source</th>
                 <th>Customer</th>
@@ -335,24 +253,20 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
                 <th className="num-col">Total</th>
                 <th>Payment</th>
                 <th>Status</th>
-                <th className="num-col">Age</th>
-                <th>Actions</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '28px 0' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '28px 0' }}>
                     No orders match these filters.
                   </td>
                 </tr>
               ) : pageRows.map(o => {
                 const it = itemsSummary(o);
-                const age = daysBefore(o.created_at);
-                const next = nextStatus(o.status);
                 return (
-                  <tr key={o.id} className={selected.has(o.id) ? 'row-selected' : undefined}>
-                    <td><input type="checkbox" checked={selected.has(o.id)} onChange={() => toggle(o.id)} aria-label={`Select ${o.order_number}`} /></td>
+                  <tr key={o.id}>
                     <td>
                       <button className="link-btn order-no" onClick={() => openOrder(o)}>{o.order_number}</button>
                       <div className="loc">{shortDateTime(o.created_at)}</div>
@@ -375,15 +289,8 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
                       <div className="loc">{o.payment_method}</div>
                     </td>
                     <td><span className={`chip ${ORDER_CHIP[o.status]}`}>{o.status}</span></td>
-                    <td className={`num-col ${o.status === 'pending' && age >= 2 ? 'text-warn' : ''}`}>{age === 0 ? 'Today' : `${age}d`}</td>
                     <td>
-                      <div className="row-actions">
-                        <button className="kanban-btn" onClick={() => openOrder(o)}>View</button>
-                        {next && <button className="kanban-btn" onClick={() => setStatus([o.id], next)}>{NEXT_LABEL[o.status]}</button>}
-                        {o.payment_status === 'unpaid' && o.status !== 'cancelled' && (
-                          <button className="kanban-btn" onClick={() => setPayment([o.id], 'paid')}>Paid</button>
-                        )}
-                      </div>
+                      <button className="kanban-btn" onClick={() => openOrder(o)}>View</button>
                     </td>
                   </tr>
                 );
@@ -408,7 +315,7 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
         delivery address per order, discounts and shipping charges, and cancellation reason.
       </div>
 
-      {/* 6. Order detail drawer */}
+      {/* 5. Order detail drawer (read-only) */}
       {open && (
         <>
           <div className="drawer-overlay" onClick={() => setOpenId(null)} />
@@ -485,37 +392,16 @@ export default function OrdersView({ orders, onOrdersChange, onOpenNewOrderModal
                 </ul>
               </section>
 
-              <section className="od-section">
-                <div className="od-label">Notes</div>
-                <textarea
-                  className="od-notes"
-                  rows={3}
-                  placeholder="Add a note for the team…"
-                  value={noteDraft}
-                  onChange={e => setNoteDraft(e.target.value)}
-                />
-                {noteDraft !== (open.notes ?? '') && (
-                  <button className="btn-secondary btn-small" onClick={() => saveNote(open.id)}>Save note</button>
-                )}
-              </section>
+              {open.notes && (
+                <section className="od-section">
+                  <div className="od-label">Notes</div>
+                  <p className="od-note-text">{open.notes}</p>
+                </section>
+              )}
             </div>
 
             <div className="drawer-actions">
-              {nextStatus(open.status) && (
-                <button className="btn-primary" onClick={() => setStatus([open.id], nextStatus(open.status)!)}>
-                  {open.status === 'pending' ? 'Confirm order' : open.status === 'confirmed' ? 'Mark shipped' : 'Mark delivered'}
-                </button>
-              )}
-              {open.payment_status === 'unpaid' && open.status !== 'cancelled' && (
-                <button className="btn-secondary" onClick={() => setPayment([open.id], 'paid')}>Mark paid</button>
-              )}
-              {open.status === 'cancelled' && open.payment_status === 'paid' && (
-                <button className="btn-secondary" onClick={() => setPayment([open.id], 'refunded')}>Refund</button>
-              )}
               <button className="btn-secondary" onClick={() => printInvoice(open)}><Printer size={14} /> Invoice</button>
-              {open.status !== 'delivered' && open.status !== 'cancelled' && (
-                <button className="btn-secondary danger" onClick={() => setStatus([open.id], 'cancelled')}>Cancel order</button>
-              )}
             </div>
           </aside>
         </>

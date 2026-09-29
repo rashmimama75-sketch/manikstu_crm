@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Bell, Moon, Search, Sun } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Bell, Search } from 'lucide-react';
 import HeaderFrieze from './HeaderFrieze';
 import FooterFrieze from './FooterFrieze';
 import NotificationsDrawer from './NotificationsDrawer';
@@ -47,7 +47,6 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
   const [focusCaller, setFocusCaller] = useState<number | undefined>(undefined);
   /** Executive open on the Executive reports page (null = the list). */
   const [reportExec, setReportExec] = useState<number | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -77,10 +76,6 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
         time: 'Today',
         type: a.level === 'critical' ? ('warning' as const) : ('info' as const),
       }));
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -312,13 +307,6 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
                   }}
                 />
               </div>
-              <button
-                className="icon-btn"
-                title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
-                onClick={() => setTheme(t => (t === 'light' ? 'dark' : 'light'))}
-              >
-                {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-              </button>
               <button className="icon-btn" title="Team alerts" onClick={() => setIsNotifsOpen(o => !o)}>
                 <Bell size={18} />
                 {notifications.length > 0 && <span className="badge">{notifications.length}</span>}
@@ -346,12 +334,6 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
           {activePage === 'regional' && (
             <RegionalReportView
               orders={SALES_ORDERS}
-              onOpenOrder={orderNumber => {
-                // Open it on Orders & tracking, filtered to this order
-                setActivePage('orders');
-                setSearchQuery(orderNumber);
-                window.scrollTo(0, 0);
-              }}
               onToast={showToast}
             />
           )}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Moon, Search, Sun } from 'lucide-react';
+import { Search } from 'lucide-react';
 import HeaderFrieze from './HeaderFrieze';
 import FooterFrieze from './FooterFrieze';
 import LogoutButton from './LogoutButton';
@@ -39,7 +39,6 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
   const me = callerFor(user.name);
 
   const [activePage, setActivePage] = useState('desk');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -85,10 +84,6 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     return () => clearInterval(t);
   }, [callLive]);
   const elapsedSec = callStartedAt === null ? 0 : Math.max(0, Math.floor(((callEndedAt ?? now) - callStartedAt) / 1000));
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -294,13 +289,6 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
                   />
                 </div>
               )}
-              <button
-                className="icon-btn"
-                title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
-                onClick={() => setTheme(t => (t === 'light' ? 'dark' : 'light'))}
-              >
-                {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-              </button>
             </div>
           </div>
 

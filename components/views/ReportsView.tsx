@@ -8,7 +8,8 @@ import {
   LeadActivity,
   SalesOrder,
 } from '../../data/managerDashboard';
-import { StaffCard, Franchise, FPO, InventoryItem, Transaction } from '../../data/initialData';
+import { Franchise, FPO, Transaction } from '../../data/initialData';
+import { StockRow, pointById, productById, stockStatus } from '../../data/centralInventory';
 import { MONTH, daysBefore, shortDate, shortDateTime } from '../../lib/format';
 import { exportTable } from '../../lib/export';
 
@@ -18,10 +19,9 @@ interface ReportsViewProps {
   /** Shared with the telecalling dashboards (kept in sync with the server). */
   followups: Followup[];
   activities: LeadActivity[];
-  staff: StaffCard[];
   franchises: Franchise[];
   fpos: FPO[];
-  inventory: InventoryItem[];
+  stock: StockRow[];
   transactions: Transaction[];
   onToast: (message: string) => void;
 }
@@ -31,10 +31,9 @@ export default function ReportsView({
   trackerLeads,
   followups,
   activities,
-  staff,
   franchises,
   fpos,
-  inventory,
+  stock,
   transactions,
   onToast,
 }: ReportsViewProps) {
@@ -110,27 +109,18 @@ export default function ReportsView({
   const inventoryMovement = () => exportTable('pdf', {
     filename: `inventory-movement-${TODAY}`,
     title: 'Inventory Movement',
-    subtitle: `${inventory.length} SKUs across all warehouses · exported ${shortDate(TODAY)}`,
+    subtitle: `${stock.length} product stock lines across warehouses and franchise hubs · exported ${shortDate(TODAY)}`,
     columns: [
-      { header: 'Product', width: 26 }, { header: 'Category', width: 16 }, { header: 'Warehouse', width: 13 },
-      { header: 'Stock', width: 9 }, { header: 'Reorder level', width: 10 }, { header: 'Lead time', width: 10 },
-      { header: 'Last restocked', width: 14 }, { header: 'Status', width: 11 },
+      { header: 'Product', width: 24 }, { header: 'Category', width: 11 }, { header: 'Stock point', width: 20 }, { header: 'Region', width: 10 },
+      { header: 'Stock', width: 8 }, { header: 'Reorder level', width: 10 }, { header: 'Lead time', width: 9 },
+      { header: 'Last restocked', width: 12 }, { header: 'Status', width: 11 },
     ],
-    rows: inventory.map(i => [i.product, i.category, i.warehouse, i.stock, i.reorderLevel, i.leadTime, i.lastRestocked, i.status]),
+    rows: stock.map(r => {
+      const p = productById(r.productId);
+      const pt = pointById(r.pointId);
+      return [p.name, p.category, pt.name, pt.region, r.stock, r.reorderLevel, `${r.leadTimeDays} days`, `${r.restockedDaysAgo} days ago`, stockStatus(r)];
+    }),
   });
-
-  const staffFunnel = () => {
-    const stages: Array<StaffCard['stage']> = ['Applied', 'Documents', 'Training', 'Active'];
-    return exportTable('pdf', {
-      filename: `staff-onboarding-funnel-${TODAY}`,
-      title: 'Staff & Training Funnel',
-      subtitle: `${staff.length} candidates in the pipeline · exported ${shortDate(TODAY)}`,
-      columns: [
-        { header: 'Name', width: 22 }, { header: 'Role', width: 30 }, { header: 'Location', width: 16 }, { header: 'Stage', width: 12 },
-      ],
-      rows: stages.flatMap(stage => staff.filter(s => s.stage === stage).map(s => [s.name, s.role, s.location, s.stage])),
-    });
-  };
 
   const financialAudit = () => exportTable('pdf', {
     filename: `financial-ledger-audit-${TODAY}`,
@@ -147,8 +137,7 @@ export default function ReportsView({
     { name: 'Telecaller Performance', desc: 'Calls made, conversion rate, follow-up SLA adherence.', build: telecallerPerformance },
     { name: 'Order & Delivery SLAs', desc: 'Fulfilment time, delivery SLA breaches, cancellations.', build: orderSlaReport },
     { name: 'Franchise & FPO Revenue', desc: 'Revenue by partner hub, growth trend, onboarding pipeline.', build: franchiseFpoRevenue },
-    { name: 'Inventory Movement', desc: 'Stock movement, reorder alerts, warehouse comparison.', build: inventoryMovement },
-    { name: 'Staff & Training Funnel', desc: 'Onboarding funnel, training completion by module.', build: staffFunnel },
+    { name: 'Inventory Movement', desc: 'Stock by product at every warehouse and franchise hub, with reorder alerts.', build: inventoryMovement },
     { name: 'Financial & Ledger Audit', desc: 'Revenue, settlements and payouts across the Odisha network.', build: financialAudit },
   ];
 

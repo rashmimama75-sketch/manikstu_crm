@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Manikstu Staff Portal',
-  description: 'Odisha agri-business network staff portal for managers and telecalling staff.',
+  title: 'Manikstu Samarth',
+  description: 'Manikstu Samarth: the Odisha agri-business network CRM for managers and telecalling staff.',
 };
 
 export default function RootLayout({

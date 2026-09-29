@@ -278,28 +278,8 @@ export default function EnquiriesView({
         {alert && <button className="link-btn clear-alert" onClick={() => { setAlert(null); resetPage(); }}>Show all enquiries</button>}
       </div>
 
-      {/* 3. Filters */}
-      <div className="page-toolbar">
-        <div className="filters">
-          {(['all', ...STATUSES] as const).map(s => (
-            <button
-              key={s}
-              className={`filter-chip ${statusFilter === s ? 'active' : ''}`}
-              onClick={() => { setStatusFilter(s); resetPage(); }}
-            >
-              <span style={{ textTransform: 'capitalize' }}>{s}</span> ({s === 'all' ? baseFiltered.length : baseFiltered.filter(e => e.status === s).length})
-            </button>
-          ))}
-        </div>
-        <div className="toolbar-actions">
-          {onImportEnquiries && (
-            <button className="btn-secondary import-btn" onClick={() => setImportOpen(true)}><Upload size={15} /> Import</button>
-          )}
-          <ExportMenu onExport={format => exportRows(filtered, format, 'current filters')} />
-        </div>
-      </div>
-
-      <div className="filter-row">
+      {/* 3. Filters: search, status, type and date on one line; import / export at the end */}
+      <div className="filter-row one-line">
         <input
           className="filter-input"
           type="search"
@@ -307,6 +287,13 @@ export default function EnquiriesView({
           value={query}
           onChange={e => { setQuery(e.target.value); resetPage(); }}
         />
+        <select className="filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value as EnquiryStatus | 'all'); resetPage(); }} aria-label="Status">
+          {(['all', ...STATUSES] as const).map(st => (
+            <option key={st} value={st}>
+              {st === 'all' ? 'All statuses' : st[0].toUpperCase() + st.slice(1)} ({st === 'all' ? baseFiltered.length : baseFiltered.filter(e => e.status === st).length})
+            </option>
+          ))}
+        </select>
         <select className="filter-select" value={typeFilter} onChange={e => { setTypeFilter(e.target.value as EnquiryType | 'all'); resetPage(); }} aria-label="Type">
           <option value="all">All types</option>
           {TYPES.map(t => <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t[0].toUpperCase() + t.slice(1)}</option>)}
@@ -316,8 +303,14 @@ export default function EnquiriesView({
           <option value="month">This month</option>
           <option value="all">All time</option>
         </select>
-        {alert && <span className="filter-note">Other filters are paused while a “Needs action” filter is on.</span>}
+        <div className="filter-row-end toolbar-actions">
+          {onImportEnquiries && (
+            <button className="btn-secondary import-btn" onClick={() => setImportOpen(true)}><Upload size={15} /> Import</button>
+          )}
+          <ExportMenu onExport={format => exportRows(filtered, format, 'current filters')} />
+        </div>
       </div>
+      {alert && <div className="filter-note filter-note-below">Other filters are paused while a “Needs action” filter is on.</div>}
 
       {/* 4. Bulk actions */}
       {selected.size > 0 && (

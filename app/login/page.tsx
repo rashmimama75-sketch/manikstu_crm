@@ -4,7 +4,7 @@ import HeaderFrieze from '../../components/HeaderFrieze';
 import FooterFrieze from '../../components/FooterFrieze';
 
 export const metadata: Metadata = {
-  title: 'Sign in · Manikstu',
+  title: 'Sign in · Manikstu Samarth',
 };
 
 export default function LoginPage() {
@@ -16,8 +16,8 @@ export default function LoginPage() {
           <div className="login-brand">
             <div className="brand-mark">🌾</div>
             <div>
-              <div className="login-brand-name">Manikstu Agri Network</div>
-              <div className="login-brand-tag">Staff Portal · Odisha</div>
+              <div className="login-brand-name">Manikstu Samarth</div>
+              <div className="login-brand-motto">One CRM for every lead, call and order.</div>
             </div>
           </div>
           <h1>Sign in</h1>
