@@ -1,29 +1,7 @@
 import React from 'react';
-import {
-  BarChart3,
-  Headphones,
-  LayoutDashboard,
-  MapPin,
-  PhoneCall,
-  ShoppingCart,
-  Sprout,
-  Store,
-  Users,
-  Wallet,
-  Warehouse,
-  type LucideIcon,
-} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-interface SidebarProps {
-  activePage: string;
-  onSelectPage: (pageKey: string) => void;
-  counts: {
-    orders: number;
-    telecalling?: number;
-  };
-}
-
-interface NavItem {
+export interface NavItem {
   key: string;
   label: string;
   icon: LucideIcon;
@@ -32,51 +10,19 @@ interface NavItem {
   soon?: boolean;
 }
 
-export default function Sidebar({ activePage, onSelectPage, counts }: SidebarProps) {
-  const groups: Array<{ label: string; items: NavItem[] }> = [
-    {
-      label: 'Overview',
-      items: [
-        { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }
-      ]
-    },
-    {
-      label: 'Operations',
-      items: [
-        { key: 'orders', label: 'Orders', icon: ShoppingCart, count: counts.orders },
-        { key: 'customers', label: 'Customers', icon: Users },
-        { key: 'regional', label: 'Regional report', icon: MapPin }
-      ]
-    },
-    {
-      label: 'Telecalling',
-      items: [
-        { key: 'tc-overview', label: 'Team overview', icon: Headphones, count: counts.telecalling },
-        { key: 'tc-executives', label: 'Telecalling executives', icon: PhoneCall }
-      ]
-    },
-    {
-      label: 'Network & Partners',
-      items: [
-        { key: 'franchise', label: 'Franchise Hubs', icon: Store, soon: true },
-        { key: 'fpo', label: 'FPO Collectives', icon: Sprout, soon: true }
-      ]
-    },
-    {
-      label: 'Inventory & Finance',
-      items: [
-        { key: 'inventory', label: 'Central inventory', icon: Warehouse },
-        { key: 'monetary', label: 'Monetary section', icon: Wallet }
-      ]
-    },
-    {
-      label: 'Insights & Approvals',
-      items: [
-        { key: 'reports', label: 'Reports & Analytics', icon: BarChart3 }
-      ]
-    }
-  ];
+export interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
 
+interface SidebarProps {
+  groups: NavGroup[];
+  activePage: string;
+  onSelectPage: (pageKey: string) => void;
+}
+
+/** Green sidebar shared by every dashboard: logo, then grouped pages with icons and counts. */
+export default function Sidebar({ groups, activePage, onSelectPage }: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
@@ -84,16 +30,15 @@ export default function Sidebar({ activePage, onSelectPage, counts }: SidebarPro
       </div>
 
       <nav className="sidebar-nav">
-        {groups.map((group, idx) => (
-          <div key={idx} className="nav-group">
+        {groups.map(group => (
+          <div key={group.label} className="nav-group">
             <div className="nav-group-label">{group.label}</div>
-            {group.items.map((item) => {
-              const isActive = activePage === item.key;
+            {group.items.map(item => {
               const Icon = item.icon;
               return (
                 <button
                   key={item.key}
-                  className={`nav-item ${isActive ? 'active' : ''}`}
+                  className={`nav-item ${activePage === item.key ? 'active' : ''}`}
                   onClick={() => onSelectPage(item.key)}
                 >
                   <Icon className="nav-icon" size={17} />

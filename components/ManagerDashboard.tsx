@@ -2,12 +2,12 @@
 
 import React, { useState, useMemo } from 'react';
 import FooterFrieze from './FooterFrieze';
-import Sidebar from './Sidebar';
+import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
 import Modal from './Modal';
 import NotificationsDrawer from './NotificationsDrawer';
 import { INITIAL_STOCK, StockRow, pointById, productById } from '../data/centralInventory';
-import { Sprout, Store } from 'lucide-react';
+import { BarChart3, Headphones, LayoutDashboard, MapPin, PhoneCall, ShoppingCart, Sprout, Store, Users, Wallet, Warehouse } from 'lucide-react';
 
 // Views
 import DashboardView from './views/DashboardView';
@@ -203,6 +203,40 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
     showToast(`Transaction ${txId} approved & settled`);
   };
 
+  const navGroups: NavGroup[] = [
+    { label: 'Overview', items: [{ key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }] },
+    {
+      label: 'Operations',
+      items: [
+        { key: 'orders', label: 'Orders', icon: ShoppingCart, count: salesOrders.filter(o => o.status === 'pending').length },
+        { key: 'customers', label: 'Customers', icon: Users },
+        { key: 'regional', label: 'Regional report', icon: MapPin },
+      ],
+    },
+    {
+      label: 'Telecalling',
+      items: [
+        { key: 'tc-overview', label: 'Team overview', icon: Headphones, count: telecallingAlerts },
+        { key: 'tc-executives', label: 'Telecalling executives', icon: PhoneCall },
+      ],
+    },
+    {
+      label: 'Network & Partners',
+      items: [
+        { key: 'franchise', label: 'Franchise Hubs', icon: Store, soon: true },
+        { key: 'fpo', label: 'FPO Collectives', icon: Sprout, soon: true },
+      ],
+    },
+    {
+      label: 'Inventory & Finance',
+      items: [
+        { key: 'inventory', label: 'Central inventory', icon: Warehouse },
+        { key: 'monetary', label: 'Monetary section', icon: Wallet },
+      ],
+    },
+    { label: 'Insights & Approvals', items: [{ key: 'reports', label: 'Reports & Analytics', icon: BarChart3 }] },
+  ];
+
   return (
     <div className="card-layout">
       {/* Toast Notification */}
@@ -227,24 +261,19 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
       {/* Main Shell */}
       <div className="shell">
         <Sidebar
+          groups={navGroups}
           activePage={activePage}
           onSelectPage={page => { setActivePage(page); if (page === 'tc-executives') setSelectedExecutive(null); }}
-          counts={{
-            orders: salesOrders.filter(o => o.status === 'pending').length,
-            telecalling: telecallingAlerts
-          }}
         />
 
         <main className="main">
           <Topbar
             title={currentMeta.title}
             subtitle={currentMeta.sub}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onSearchSubmit={handleSearchSubmit}
-            unreadNotifsCount={notifications.length}
-            onToggleNotifs={() => setIsNotifsOpen(!isNotifsOpen)}
+            search={{ query: searchQuery, onChange: setSearchQuery, onSubmit: handleSearchSubmit, placeholder: 'Search orders, farmers… (Enter to jump)' }}
+            notifications={{ count: notifications.length, onToggle: () => setIsNotifsOpen(!isNotifsOpen), title: 'Manager notifications' }}
             status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
+            profile={{ name: 'Manager Portal', role: 'Manikstu Samarth', detail: `${user.name} · Staff ID ${user.staffId}` }}
           />
 
           {/* PAGE ROUTING */}

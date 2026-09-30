@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
-import HeaderFrieze from './HeaderFrieze';
+import { BarChart3, CalendarClock, Headphones, History, Upload } from 'lucide-react';
+import Sidebar, { NavGroup } from './Sidebar';
+import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
-import LogoutButton from './LogoutButton';
 import CallDeskView, { CallForm } from './calling-executive/CallDeskView';
 import CallHistoryView from './calling-executive/CallHistoryView';
 import CallbacksView from './calling-executive/CallbacksView';
@@ -193,17 +193,17 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
   };
   const currentMeta = pageMeta[activePage] ?? pageMeta.desk;
 
-  const navGroups = [
-    { label: 'Calling', items: [{ key: 'desk', label: 'Call dashboard', count: queue.length }] },
+  const navGroups: NavGroup[] = [
+    { label: 'Calling', items: [{ key: 'desk', label: 'Call dashboard', icon: Headphones, count: queue.length }] },
     {
       label: 'My work',
       items: [
-        { key: 'callbacks', label: 'Call desk', count: dueCallbacks },
-        { key: 'history', label: 'Call history' },
-        { key: 'import', label: 'Import call report' },
+        { key: 'callbacks', label: 'Call desk', icon: CalendarClock, count: dueCallbacks },
+        { key: 'history', label: 'Call history', icon: History },
+        { key: 'import', label: 'Import call report', icon: Upload },
       ],
     },
-    { label: 'Performance', items: [{ key: 'reports', label: 'Reports' }] },
+    { label: 'Performance', items: [{ key: 'reports', label: 'Reports', icon: BarChart3 }] },
   ];
 
   const handleNavigate = (page: string) => {
@@ -213,84 +213,22 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
   };
 
   return (
-    <div>
+    <div className="card-layout">
       {toastMessage && <div className={`toast ${toastMessage.startsWith('⚠️') ? 'toast-error' : ''}`}>{toastMessage.startsWith('⚠️') ? toastMessage : `✅ ${toastMessage}`}</div>}
 
-      <div className="app-header">
-        <div className="masthead">
-          <div className="masthead-bar">
-            <div className="brand">
-              <div className="brand-mark">🌾</div>
-              <div>
-                <div className="brand-name">Manikstu Calling</div>
-                <div className="brand-tag">Calling Executive Desk</div>
-              </div>
-            </div>
-            <div className="masthead-right">
-              <span>Morning shift · 9:00–18:00</span>
-              <span style={{ opacity: 0.5 }}>|</span>
-              <span>Staff ID: {user.staffId}</span>
-
-              <div className="masthead-user">
-                <div className="who" style={{ cursor: 'default' }}>
-                  <div className="avatar">{user.initials}</div>
-                  <div>
-                    <div className="who-name">{user.name}</div>
-                    <div className="who-role">Calling Executive</div>
-                  </div>
-                </div>
-                <LogoutButton />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <HeaderFrieze />
-      </div>
-
       <div className="shell">
-        <aside className="sidebar">
-          {navGroups.map(group => (
-            <div key={group.label} className="nav-group">
-              <div className="nav-group-label">{group.label}</div>
-              {group.items.map(item => (
-                <button
-                  key={item.key}
-                  className={`nav-item ${activePage === item.key ? 'active' : ''}`}
-                  onClick={() => handleNavigate(item.key)}
-                >
-                  <span className="dot"></span>
-                  {item.label}
-                  {'count' in item && item.count !== undefined && item.count > 0 && (
-                    <span className="count">{item.count}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        </aside>
+        <Sidebar groups={navGroups} activePage={activePage} onSelectPage={handleNavigate} />
 
         <main className="main">
-          <div className="topbar">
-            <div>
-              <h1>{currentMeta.title}</h1>
-              <div className="sub">{currentMeta.sub}</div>
-            </div>
-            <div className="topbar-tools">
-              <SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />
-              {(activePage === 'history' || activePage === 'callbacks') && (
-                <div className="search">
-                  <Search size={16} style={{ color: 'var(--ink-soft)' }} />
-                  <input
-                    type="text"
-                    placeholder="Search by name, phone or note…"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
+          <Topbar
+            title={currentMeta.title}
+            subtitle={currentMeta.sub}
+            search={activePage === 'history' || activePage === 'callbacks'
+              ? { query: searchQuery, onChange: setSearchQuery, placeholder: 'Search by name, phone or note…' }
+              : undefined}
+            status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
+            profile={{ name: user.name, role: 'Calling Executive', initials: user.initials, detail: `Staff ID ${user.staffId} · Morning shift 9:00–18:00` }}
+          />
 
           {activePage === 'desk' && (
             <CallDeskView
@@ -345,13 +283,12 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
               onToast={showToast}
             />
           )}
+          <footer className="site-footer">
+            <div>© 2026 Manikstu Agri Network · Calling desk</div>
+          </footer>
+          <FooterFrieze />
         </main>
       </div>
-
-      <footer className="site-footer">
-        <div>© 2026 Manikstu Agri Network · Odisha</div>
-      </footer>
-      <FooterFrieze />
 
       {callTarget && (
         <CallModal

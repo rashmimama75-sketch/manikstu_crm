@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { CalendarClock, IndianRupee, Percent, PhoneCall, ShoppingCart, UserPlus, X } from 'lucide-react';
 import { TELECALLERS, TODAY, VERTICALS, SalesOrder, WebEnquiry, Telecaller } from '../../data/managerDashboard';
 import { ORDER_CHIP, ago, daysBefore, pct, rupees, rupeesShort, shortDate } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
@@ -114,9 +114,14 @@ export default function TeamOverview({ data, orders, enquiries, onReassign, onOp
     </th>
   );
 
+  const monthTotal = months.reduce((a, m) => a + m.amount, 0);
+  const monthAvg = Math.round(monthTotal / Math.max(1, months.length));
+  const bestMonth = months.reduce((b, m) => (m.amount > b.amount ? m : b), months[0]);
+  const thisMonth = months[months.length - 1];
+
   return (
     <>
-      {/* 1. Filters */}
+      {/* Filters */}
       <div className="page-toolbar">
         <div className="filters">
           {(['today', '7d', 'month'] as Period[]).map(p => (
@@ -135,110 +140,69 @@ export default function TeamOverview({ data, orders, enquiries, onReassign, onOp
         </div>
       </div>
 
-      {/* 2. Team tiles */}
-      <div className="scoreboard">
-        <div className="score">
-          <div className="num">{rupeesShort(sum('revenue'))} <small>{sum('sales')} sales</small></div>
-          <div className="label">Revenue · {PERIOD_LABEL[period].toLowerCase()}</div>
-        </div>
-        <div className="score">
-          <div className="num">{sum('calls')} <small>{pct(sum('connected'), sum('calls'))}% connected</small></div>
-          <div className="label">Calls · {PERIOD_LABEL[period].toLowerCase()}</div>
-        </div>
-        <div className="score">
-          <div className="num">{sum('openLeads')} <small>+{newLeads} new</small></div>
-          <div className="label">Open leads</div>
-        </div>
-        <div className="score">
-          <div className="num">{sum('pendingFollowups')} <small className="warn">{sum('overdueFollowups')} overdue</small></div>
-          <div className="label">Follow-ups pending</div>
-        </div>
-        <div className="score">
-          <div className="num">{teamConversion}%</div>
-          <div className="label">Team conversion</div>
-        </div>
-        <div className="score">
-          <div className="num">{pendingOrders} <small className="warn">{newEnquiries} enquiries</small></div>
-          <div className="label">Orders to confirm</div>
-        </div>
-      </div>
-
-      {/* 3. Alerts */}
-      {alerts.length > 0 && (
-        <div className="panel team-alerts" style={{ marginBottom: 20 }}>
-          <div className="panel-head"><h2>Needs your attention</h2><span className="panel-meta">{alerts.length} items</span></div>
-          <ul className="attn-list">
-            {alerts.map(a => (
-              <li key={a.key}>
-                <div className="alert-line">
-                  <span className={`alert-dot ${a.level}`} />
-                  <span>{a.text}</span>
-                </div>
-                <div className="row-actions">
-                  {a.key.startsWith('inactive') && <button className="kanban-btn" onClick={() => setOpenStaffId(a.callerId!)}>Reassign leads</button>}
-                  {a.key.startsWith('overdue') && <button className="kanban-btn" onClick={() => onOpenFollowups(a.callerId)}>View follow-ups</button>}
-                  {a.key.startsWith('nocalls') && <button className="kanban-btn" onClick={() => setOpenStaffId(a.callerId!)}>View staff</button>}
-                  {a.key === 'stale' && <button className="kanban-btn" onClick={() => onOpenLeads()}>View leads</button>}
-                </div>
-              </li>
+      {/* Card grid, same layout as the manager dashboard */}
+      <div className="dash-grid">
+        {/* Pipeline */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Pipeline</h2>
+            <span className="panel-meta">{pipeline.reduce((a, p) => a + p.stuck, 0)} stuck 7+ days</span>
+          </div>
+          <div className="filters" style={{ marginBottom: 16 }}>
+            {VERTICALS.map(v => (
+              <button key={v.id} className={`filter-chip ${pipelineVertical === v.id ? 'active' : ''}`} onClick={() => setPipelineVertical(v.id)}>{v.name}</button>
             ))}
-          </ul>
+          </div>
+          <HBarList rows={pipeline.map(p => ({
+            key: String(p.st.id),
+            label: p.st.name,
+            value: p.n,
+            display: p.stuck ? `${p.n} · ${p.stuck} stuck` : String(p.n),
+            tip: `${p.st.name}: ${p.n} leads${p.stuck ? `, ${p.stuck} not moved in 7+ days` : ''}`,
+          }))} />
         </div>
-      )}
 
-      {/* 4. Team roster */}
-      <div className="panel" style={{ marginBottom: 20 }}>
-        <div className="panel-head">
-          <h2>Telecalling team</h2>
-          <ExportMenu onExport={exportTeam} />
+        {/* Headline tiles */}
+        <div className="stat-tiles">
+          <div className="stat-tile accent">
+            <IndianRupee className="stat-icon" size={24} />
+            <div className="num">{rupeesShort(sum('revenue'))}</div>
+            <small>{sum('sales')} sales</small>
+            <div className="label">Revenue · {PERIOD_LABEL[period].toLowerCase()}</div>
+          </div>
+          <div className="stat-tile">
+            <PhoneCall className="stat-icon" size={24} />
+            <div className="num">{sum('calls')}</div>
+            <small>{pct(sum('connected'), sum('calls'))}% connected</small>
+            <div className="label">Calls · {PERIOD_LABEL[period].toLowerCase()}</div>
+          </div>
+          <div className="stat-tile">
+            <UserPlus className="stat-icon" size={24} />
+            <div className="num">{sum('openLeads')}</div>
+            <small>+{newLeads} new</small>
+            <div className="label">Open leads</div>
+          </div>
+          <div className="stat-tile">
+            <CalendarClock className="stat-icon" size={24} />
+            <div className="num">{sum('pendingFollowups')}</div>
+            <small className="warn">{sum('overdueFollowups')} overdue</small>
+            <div className="label">Follow-ups pending</div>
+          </div>
+          <div className="stat-tile">
+            <Percent className="stat-icon" size={24} />
+            <div className="num">{teamConversion}%</div>
+            <small>of {leadsInScope.length} leads</small>
+            <div className="label">Team conversion</div>
+          </div>
+          <div className="stat-tile">
+            <ShoppingCart className="stat-icon" size={24} />
+            <div className="num">{pendingOrders}</div>
+            <small className="warn">{newEnquiries} new enquiries</small>
+            <div className="label">Orders to confirm</div>
+          </div>
         </div>
-        <div className="table-wrap">
-          <table className="team-table roster-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Telecaller</th>
-                <SortTh k="calls" label="Calls" />
-                <SortTh k="connectRate" label="Connect" />
-                <SortTh k="openLeads" label="Open leads" />
-                <SortTh k="overdueFollowups" label="Follow-ups" />
-                <SortTh k="sales" label="Sales" />
-                <SortTh k="revenue" label="Revenue" />
-                <SortTh k="conversion" label="Conversion" />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(s => {
-                const flag = !s.t.is_active ? s.openLeads > 0 : s.callsToday === 0 || s.overdueFollowups >= 2;
-                const rank = rankOf.get(s.t.id)!;
-                return (
-                  <tr key={s.t.id} className={`clickable ${flag ? 'row-alert' : ''}`} onClick={() => setOpenStaffId(s.t.id)}>
-                    <td>{rank <= 3 && s.revenue > 0 ? <span className={`rank-badge r${rank}`}>{rank}</span> : rank}</td>
-                    <td className="cust">
-                      {s.t.name}
-                      <div className="loc">
-                        {s.t.region} · <span className={`chip ${s.t.is_active ? 'delivered' : 'muted'}`}>{s.t.is_active ? 'Active' : 'Inactive'}</span>
-                        {s.t.is_active && s.callsToday === 0 && <> <span className="chip pending">No calls today</span></>}
-                      </div>
-                    </td>
-                    <td className="num-col">{s.calls}</td>
-                    <td className="num-col">{s.calls ? `${s.connectRate}%` : '—'}</td>
-                    <td className="num-col">{s.openLeads}</td>
-                    <td className="num-col">{s.pendingFollowups} / <span className={s.overdueFollowups ? 'text-warn' : undefined}>{s.overdueFollowups}</span></td>
-                    <td className="num-col">{s.sales}</td>
-                    <td className="num-col strong">{rupees(s.revenue)}</td>
-                    <td className="num-col">{s.conversion}%</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="panel-note">Click a telecaller for details. Follow-ups show pending / overdue. Calls, sales and revenue are for {PERIOD_LABEL[period].toLowerCase()}.</div>
-      </div>
 
-      {/* 5. Workload + pipeline */}
-      <div className="grid equal-2">
+        {/* Workload */}
         <div className="panel">
           <div className="panel-head">
             <h2>Workload</h2>
@@ -252,51 +216,71 @@ export default function TeamOverview({ data, orders, enquiries, onReassign, onOp
             tip: `${s.t.name}: ${s.openLeads} open leads, ${s.staleLeads} untouched 3+ days`,
           }))} />
         </div>
-        <div className="panel">
-          <div className="panel-head">
-            <h2>Pipeline</h2>
-            <span className="panel-meta">{pipeline.reduce((a, p) => a + p.stuck, 0)} stuck 7+ days</span>
-          </div>
-          <div className="filters" style={{ marginBottom: 14 }}>
-            {VERTICALS.map(v => (
-              <button key={v.id} className={`filter-chip ${pipelineVertical === v.id ? 'active' : ''}`} onClick={() => setPipelineVertical(v.id)}>{v.name}</button>
-            ))}
-          </div>
-          <HBarList rows={pipeline.map(p => ({
-            key: String(p.st.id),
-            label: p.st.name,
-            value: p.n,
-            display: p.stuck ? `${p.n} · ${p.stuck} stuck` : String(p.n),
-            tip: `${p.st.name}: ${p.n} leads${p.stuck ? `, ${p.stuck} not moved in 7+ days` : ''}`,
-          }))} />
-        </div>
-      </div>
 
-      {/* 6. Sales */}
-      <div className="grid equal-2">
-        <div className="panel">
-          <div className="panel-head"><h2>Team sales · 6 months</h2><span className="panel-meta">{rupees(months.reduce((a, m) => a + m.amount, 0))}</span></div>
-          <div className="bar-chart">
+        {/* Team sales */}
+        <div className="panel span-2 chart-fill">
+          <div className="panel-head">
+            <h2>Team Sales · 6 Months</h2>
+            <span className="panel-meta">{rupees(monthTotal)} total</span>
+          </div>
+          <div className="trend-facts">
+            <div><span className="k">Monthly average</span><span className="v">{rupees(monthAvg)}</span></div>
+            <div><span className="k">Best month</span><span className="v">{rupees(bestMonth.amount)} <small>in {bestMonth.label}</small></span></div>
+            <div><span className="k"><i className="swatch now" />This month so far</span><span className="v">{rupees(thisMonth.amount)} <small>{thisMonth.count} sales</small></span></div>
+          </div>
+          <div className="bar-chart team-sales-chart" role="img" aria-label={`Team sales for the last 6 months: ${rupees(monthTotal)} in total`}>
             {months.map((m, i) => (
-              <div key={m.key} className="bc-col" data-tip={`${m.label}: ${rupees(m.amount)} · ${m.count} sales${i === 5 ? ' (month to date)' : ''}`}>
-                <div className={`bc-bar ${i === 5 ? 'now' : ''}`} style={{ height: `${(m.amount / maxMonth) * 100}%` }} />
+              <div key={m.key} className="bc-col" data-tip={`${m.label}: ${rupees(m.amount)} · ${m.count} sales${i === months.length - 1 ? ' (month to date)' : ''}`}>
+                <div className={`bc-bar ${i === months.length - 1 ? 'now' : ''}`} style={{ height: `${(m.amount / maxMonth) * 100}%` }} />
                 <div className="bc-label">{m.label}</div>
               </div>
             ))}
           </div>
         </div>
-        <div className="panel">
-          <div className="panel-head"><h2>Top products</h2><span className="panel-meta">{PERIOD_LABEL[period]}</span></div>
-          {byProduct.length === 0
-            ? <div className="loc">No sales in this period yet.</div>
-            : <HBarList rows={byProduct.map(([id, amount]) => ({ key: String(id), label: productName(id), value: amount, display: rupeesShort(amount), tip: `${productName(id)}: ${rupees(amount)}` }))} />}
-        </div>
-      </div>
 
-      {/* 7. Activity + order status */}
-      <div className="grid equal-2">
-        <div className="panel">
-          <div className="panel-head"><h2>Recent activity</h2></div>
+        {/* Top products and order status stacked beside the sales chart */}
+        <div className="stack">
+          <div className="panel">
+            <div className="panel-head"><h2>Top Products</h2><span className="panel-meta">{PERIOD_LABEL[period]}</span></div>
+            {byProduct.length === 0
+              ? <div className="loc">No sales in this period yet.</div>
+              : <HBarList rows={byProduct.map(([id, amount]) => ({ key: String(id), label: productName(id), value: amount, display: rupeesShort(amount), tip: `${productName(id)}: ${rupees(amount)}` }))} />}
+          </div>
+          <div className="panel">
+            <div className="panel-head"><h2>Order Status</h2><span className="panel-meta">{orders.length} orders</span></div>
+            <HBarList rows={orderCounts.map(c => ({ key: c.st, label: c.st[0].toUpperCase() + c.st.slice(1), value: c.n, display: String(c.n), tip: `${c.st}: ${c.n} orders` }))} />
+            <div className="loc" style={{ marginTop: 12 }}>
+              <span className={`chip ${ORDER_CHIP.pending}`}>{pendingOrders} pending</span> orders need a confirmation call.
+            </div>
+          </div>
+        </div>
+
+        {/* Needs attention */}
+        <div className="panel span-2 team-alerts">
+          <div className="panel-head"><h2>Needs Your Attention</h2><span className="panel-meta">{alerts.length} items</span></div>
+          {alerts.length === 0 ? <div className="loc">All clear: nothing needs you right now.</div> : (
+            <ul className="attn-list">
+              {alerts.map(a => (
+                <li key={a.key}>
+                  <div className="alert-line">
+                    <span className={`alert-dot ${a.level}`} />
+                    <span>{a.text}</span>
+                  </div>
+                  <div className="row-actions">
+                    {a.key.startsWith('inactive') && <button className="kanban-btn" onClick={() => setOpenStaffId(a.callerId!)}>Reassign leads</button>}
+                    {a.key.startsWith('overdue') && <button className="kanban-btn" onClick={() => onOpenFollowups(a.callerId)}>View follow-ups</button>}
+                    {a.key.startsWith('nocalls') && <button className="kanban-btn" onClick={() => setOpenStaffId(a.callerId!)}>View staff</button>}
+                    {a.key === 'stale' && <button className="kanban-btn" onClick={() => onOpenLeads()}>View leads</button>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Recent activity */}
+        <div className="panel wide-at-2">
+          <div className="panel-head"><h2>Recent Activity</h2><span className="panel-meta">latest {feed.length}</span></div>
           <ul className="attn-list">
             {feed.map((f, i) => (
               <li key={i}>
@@ -309,12 +293,56 @@ export default function TeamOverview({ data, orders, enquiries, onReassign, onOp
             ))}
           </ul>
         </div>
-        <div className="panel">
-          <div className="panel-head"><h2>Order status</h2><span className="panel-meta">{orders.length} orders</span></div>
-          <HBarList rows={orderCounts.map(c => ({ key: c.st, label: c.st[0].toUpperCase() + c.st.slice(1), value: c.n, display: String(c.n), tip: `${c.st}: ${c.n} orders` }))} />
-          <div className="loc" style={{ marginTop: 12 }}>
-            <span className={`chip ${ORDER_CHIP.pending}`}>{pendingOrders} pending</span> orders need a confirmation call.
+
+        {/* Team roster */}
+        <div className="panel span-3">
+          <div className="panel-head">
+            <h2>Telecalling Team</h2>
+            <ExportMenu onExport={exportTeam} />
           </div>
+          <div className="table-wrap">
+            <table className="team-table roster-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Telecaller</th>
+                  <SortTh k="calls" label="Calls" />
+                  <SortTh k="connectRate" label="Connect" />
+                  <SortTh k="openLeads" label="Open leads" />
+                  <SortTh k="overdueFollowups" label="Follow-ups" />
+                  <SortTh k="sales" label="Sales" />
+                  <SortTh k="revenue" label="Revenue" />
+                  <SortTh k="conversion" label="Conversion" />
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(s => {
+                  const flag = !s.t.is_active ? s.openLeads > 0 : s.callsToday === 0 || s.overdueFollowups >= 2;
+                  const rank = rankOf.get(s.t.id)!;
+                  return (
+                    <tr key={s.t.id} className={`clickable ${flag ? 'row-alert' : ''}`} onClick={() => setOpenStaffId(s.t.id)}>
+                      <td>{rank <= 3 && s.revenue > 0 ? <span className={`rank-badge r${rank}`}>{rank}</span> : rank}</td>
+                      <td className="cust">
+                        {s.t.name}
+                        <div className="loc">
+                          {s.t.region} · <span className={`chip ${s.t.is_active ? 'delivered' : 'muted'}`}>{s.t.is_active ? 'Active' : 'Inactive'}</span>
+                          {s.t.is_active && s.callsToday === 0 && <> <span className="chip pending">No calls today</span></>}
+                        </div>
+                      </td>
+                      <td className="num-col">{s.calls}</td>
+                      <td className="num-col">{s.calls ? `${s.connectRate}%` : '—'}</td>
+                      <td className="num-col">{s.openLeads}</td>
+                      <td className="num-col">{s.pendingFollowups} / <span className={s.overdueFollowups ? 'text-warn' : undefined}>{s.overdueFollowups}</span></td>
+                      <td className="num-col">{s.sales}</td>
+                      <td className="num-col strong">{rupees(s.revenue)}</td>
+                      <td className="num-col">{s.conversion}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="panel-note">Click a telecaller for details. Follow-ups show pending / overdue. Calls, sales and revenue are for {PERIOD_LABEL[period].toLowerCase()}.</div>
         </div>
       </div>
 

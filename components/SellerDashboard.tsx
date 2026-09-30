@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
-import HeaderFrieze from './HeaderFrieze';
+import { BarChart3, Boxes, LayoutDashboard, MapPin, Package, ShoppingCart, Truck, Wallet } from 'lucide-react';
+import Sidebar, { NavGroup } from './Sidebar';
+import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
-import LogoutButton from './LogoutButton';
 import Modal from './Modal';
 import SellerOverview from './seller/SellerOverview';
 import SellerOrders from './seller/SellerOrders';
@@ -183,23 +183,23 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
   };
   const currentMeta = pageMeta[activePage] ?? pageMeta.overview;
 
-  const navGroups = [
-    { label: 'Overview', items: [{ key: 'overview', label: 'Dashboard' }] },
+  const navGroups: NavGroup[] = [
+    { label: 'Overview', items: [{ key: 'overview', label: 'Dashboard', icon: LayoutDashboard }] },
     {
       label: 'Sell',
       items: [
-        { key: 'orders', label: 'Orders', count: toConfirm },
-        { key: 'products', label: 'My products', count: lowStock },
-        { key: 'stock', label: 'Stock' },
-        { key: 'tracking', label: 'Tracking', count: lateShipments + toShip },
-        { key: 'regional', label: 'Regional report' },
+        { key: 'orders', label: 'Orders', icon: ShoppingCart, count: toConfirm },
+        { key: 'products', label: 'My products', icon: Package, count: lowStock },
+        { key: 'stock', label: 'Stock', icon: Boxes },
+        { key: 'tracking', label: 'Tracking', icon: Truck, count: lateShipments + toShip },
+        { key: 'regional', label: 'Regional report', icon: MapPin },
       ],
     },
     {
       label: 'Money',
       items: [
-        { key: 'payouts', label: 'Payouts', count: due },
-        { key: 'reports', label: 'Reports' },
+        { key: 'payouts', label: 'Payouts', icon: Wallet, count: due },
+        { key: 'reports', label: 'Reports', icon: BarChart3 },
       ],
     },
   ];
@@ -211,83 +211,25 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
   };
 
   return (
-    <div>
+    <div className="card-layout">
       {toastMessage && <div className="toast">✅ {toastMessage}</div>}
 
-      <div className="app-header">
-        <div className="masthead">
-          <div className="masthead-bar">
-            <div className="brand">
-              <div className="brand-mark">🌾</div>
-              <div>
-                <div className="brand-name">Manikstu Seller Hub</div>
-                <div className="brand-tag">{seller.business}</div>
-              </div>
-            </div>
-            <div className="masthead-right">
-              <span>{seller.city}</span>
-              <span style={{ opacity: 0.5 }}>|</span>
-              <span>Seller ID: {user.staffId}</span>
-
-              <div className="masthead-user">
-                <div className="who" style={{ cursor: 'default' }}>
-                  <div className="avatar">{user.initials}</div>
-                  <div>
-                    <div className="who-name">{user.name}</div>
-                    <div className="who-role">Seller</div>
-                  </div>
-                </div>
-                <LogoutButton />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <HeaderFrieze />
-      </div>
-
       <div className="shell">
-        <aside className="sidebar">
-          {navGroups.map(group => (
-            <div key={group.label} className="nav-group">
-              <div className="nav-group-label">{group.label}</div>
-              {group.items.map(item => (
-                <button
-                  key={item.key}
-                  className={`nav-item ${activePage === item.key ? 'active' : ''}`}
-                  onClick={() => handleNavigate(item.key)}
-                >
-                  <span className="dot"></span>
-                  {item.label}
-                  {'count' in item && item.count !== undefined && item.count > 0 && (
-                    <span className="count">{item.count}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        </aside>
+        <Sidebar groups={navGroups} activePage={activePage} onSelectPage={handleNavigate} />
 
         <main className="main">
-          <div className="topbar">
-            <div>
-              <h1>{currentMeta.title}</h1>
-              <div className="sub">{currentMeta.sub}</div>
-            </div>
-            <div className="topbar-tools">
-              {(activePage === 'orders' || activePage === 'products' || activePage === 'stock' || activePage === 'tracking') && (
-                <div className="search">
-                  <Search size={16} style={{ color: 'var(--ink-soft)' }} />
-                  <input
-                    type="text"
-                    placeholder={activePage === 'products' || activePage === 'stock' ? 'Search products…' : activePage === 'tracking' ? 'Search order, customer, city, AWB…' : 'Search order, customer, city, product…'}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
+          <Topbar
+            title={currentMeta.title}
+            subtitle={currentMeta.sub}
+            search={activePage === 'orders' || activePage === 'products' || activePage === 'stock' || activePage === 'tracking'
+              ? {
+                  query: searchQuery,
+                  onChange: setSearchQuery,
+                  placeholder: activePage === 'products' || activePage === 'stock' ? 'Search products…' : activePage === 'tracking' ? 'Search order, customer, city, AWB…' : 'Search order, customer, city, product…',
+                }
+              : undefined}
+            profile={{ name: user.name, role: seller.business, initials: user.initials, detail: `Seller ID ${user.staffId} · ${seller.city}` }}
+          />
 
           {activePage === 'overview' && (
             <SellerOverview
@@ -321,13 +263,12 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
           {activePage === 'regional' && <SellerRegional seller={seller} orders={myOrders} onToast={showToast} />}
           {activePage === 'payouts' && <SellerPayouts orders={myOrders} seller={seller} />}
           {activePage === 'reports' && <SellerReports seller={seller} orders={myOrders} products={myProducts} onToast={showToast} />}
+          <footer className="site-footer">
+            <div>© 2026 Manikstu Agri Network · Seller Hub</div>
+          </footer>
+          <FooterFrieze />
         </main>
       </div>
-
-      <footer className="site-footer">
-        <div>© 2026 Manikstu Agri Network · Odisha</div>
-      </footer>
-      <FooterFrieze />
 
       <Modal isOpen={editing !== null} onClose={() => setEditing(null)} title={`Edit · ${editing?.name ?? ''}`} closeOnBackdrop={false}>
         {editing && (

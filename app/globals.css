@@ -2260,11 +2260,11 @@ tr.row-new td:first-child { box-shadow: inset 3px 0 0 var(--leaf); }
 @media (max-width: 768px) {
   /* Phones: sidebar becomes a card on top with a sideways-scrolling menu */
   .card-layout .shell { flex-direction: column; align-items: stretch; padding: 12px; gap: 12px; }
-  .card-layout .sidebar { display: flex; position: static; width: auto; flex: none; height: auto; padding: 16px 0 12px; border-radius: 12px; }
+  .card-layout .sidebar { display: flex; position: static; width: auto; min-width: 0; max-width: 100%; flex: none; height: auto; padding: 16px 0 12px; border-radius: 12px; }
   .card-layout .main { padding: 0; }
   .sidebar-brand { padding: 0 16px 12px; margin-bottom: 12px; }
   .sidebar-brand .brand-logo { height: 48px; width: auto; max-width: 100%; }
-  .card-layout .sidebar-nav { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 0 12px 4px; }
+  .card-layout .sidebar-nav { display: flex; gap: 6px; min-width: 0; overflow-x: auto; overflow-y: hidden; padding: 0 12px 4px; }
   .card-layout .nav-group { display: contents; }
   .card-layout .nav-group-label { display: none; }
   .card-layout .nav-item { width: auto; margin: 0; flex: 0 0 auto; white-space: nowrap; }
@@ -2338,3 +2338,12 @@ tr.row-new td:first-child { box-shadow: inset 3px 0 0 var(--leaf); }
 .inv-legend-pct { font-size: 12px; color: var(--ink-soft); text-align: right; }
 .inv-bar-group + .inv-bar-group { margin-top: 14px; }
 .inv-needs { color: var(--rust); font-weight: 600; }
+
+/* Topbar greeting, on pages with no search box */
+.topbar-greeting { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.topbar-greeting .greet { font-weight: 700; font-size: 15px; color: var(--ink); }
+.topbar-greeting .loc { font-size: 12px; }
+
+/* Telecalling head overview: 6-month sales chart fills its card like the manager's sales chart */
+.chart-fill .team-sales-chart { flex: 1; height: auto; min-height: 200px; }
+.team-sales-chart .bc-bar { max-width: 48px; }

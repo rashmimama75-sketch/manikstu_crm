@@ -5,58 +5,62 @@ import LogoutButton from './LogoutButton';
 interface TopbarProps {
   title: string;
   subtitle: string;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
-  onSearchSubmit: () => void;
-  unreadNotifsCount: number;
-  onToggleNotifs: () => void;
+  /** Search box on the left. Leave out on pages with nothing to search: a greeting shows instead. */
+  search?: {
+    query: string;
+    onChange: (query: string) => void;
+    onSubmit?: () => void;
+    placeholder: string;
+  };
+  notifications?: { count: number; onToggle: () => void; title: string };
   /** Shown at the start of the tools, e.g. the live-sync indicator. */
   status?: React.ReactNode;
+  profile: {
+    name: string;
+    role: string;
+    /** Initials for the avatar; a person icon when left out. */
+    initials?: string;
+    /** Extra line for the greeting, e.g. staff ID and shift. */
+    detail?: string;
+  };
 }
 
-export default function Topbar({
-  title,
-  subtitle,
-  searchQuery,
-  onSearchChange,
-  onSearchSubmit,
-  unreadNotifsCount,
-  onToggleNotifs,
-  status
-}: TopbarProps) {
+/** Sticky top card shared by every dashboard: search, tools and profile, then the page title. */
+export default function Topbar({ title, subtitle, search, notifications, status, profile }: TopbarProps) {
   return (
     <>
-      {/* Search on the left, tools on the right, in one card that stays at the top */}
       <div className="topbar-sticky">
         <div className="topbar-card">
-          <form
-            className="search"
-            onSubmit={(e) => { e.preventDefault(); onSearchSubmit(); }}
-          >
-            <Search size={16} style={{ color: 'var(--ink-soft)' }} />
-            <input
-              type="text"
-              placeholder="Search orders, farmers… (Enter to jump)"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-            />
-          </form>
+          {search ? (
+            <form className="search" onSubmit={e => { e.preventDefault(); search.onSubmit?.(); }}>
+              <Search size={16} style={{ color: 'var(--ink-soft)' }} />
+              <input
+                type="text"
+                placeholder={search.placeholder}
+                value={search.query}
+                onChange={e => search.onChange(e.target.value)}
+              />
+            </form>
+          ) : (
+            <div className="topbar-greeting">
+              <div className="greet">Namaskar, {profile.name.split(' ')[0]}</div>
+              {profile.detail && <div className="loc">{profile.detail}</div>}
+            </div>
+          )}
 
           <div className="topbar-tools">
             {status}
-            <button
-              className="icon-btn"
-              title="Manager Notifications"
-              onClick={onToggleNotifs}
-            >
-              <Bell size={18} />
-              {unreadNotifsCount > 0 && <span className="badge">{unreadNotifsCount}</span>}
-            </button>
-            <div className="topbar-profile">
-              <div className="avatar"><UserRound size={18} /></div>
+            {notifications && (
+              <button className="icon-btn" title={notifications.title} onClick={notifications.onToggle}>
+                <Bell size={18} />
+                {notifications.count > 0 && <span className="badge">{notifications.count}</span>}
+              </button>
+            )}
+            <div className="topbar-profile" title={profile.detail}>
+              <div className="avatar">{profile.initials ?? <UserRound size={18} />}</div>
               <div>
-                <div className="who-name">Manager Portal</div>
-                <div className="who-role">Manikstu Samarth</div>
+                <div className="who-name">{profile.name}</div>
+                <div className="who-role">{profile.role}</div>
               </div>
             </div>
             <LogoutButton />

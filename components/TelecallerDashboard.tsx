@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Bell, Search } from 'lucide-react';
-import HeaderFrieze from './HeaderFrieze';
+import {
+  BarChart3, CalendarClock, Inbox, LayoutDashboard, MapPin, MessageSquareWarning, Package, TrendingUp, Truck, UserCheck, UserPlus, Users,
+} from 'lucide-react';
+import Sidebar, { NavGroup } from './Sidebar';
+import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
 import NotificationsDrawer from './NotificationsDrawer';
-import LogoutButton from './LogoutButton';
 import TeamOverview from './telecaller/TeamOverview';
 import TeamLeads from './telecaller/TeamLeads';
 import TeamFollowups from './telecaller/TeamFollowups';
@@ -103,33 +105,39 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
   const lateOrders = useMemo(() => SALES_ORDERS.filter(o => trackingFor(o).delayed).length, []);
   const toAssign = complaints.filter(isUnassigned).length;
 
-  const navGroups = [
-    { label: 'Overview', items: [{ key: 'overview', label: 'Team overview', count: alerts.filter(a => a.level === 'critical').length }] },
+  const navGroups: NavGroup[] = [
+    { label: 'Overview', items: [{ key: 'overview', label: 'Team overview', icon: LayoutDashboard, count: alerts.filter(a => a.level === 'critical').length }] },
     {
       label: 'Team',
       items: [
-        { key: 'leads', label: 'Leads & assignment', count: withInactive },
-        { key: 'followups', label: 'Follow-ups', count: overdueCount },
-        { key: 'exec-reports', label: 'Executive reports' },
-        { key: 'onboarding', label: 'Staff onboarding' },
+        { key: 'leads', label: 'Leads & assignment', icon: Users, count: withInactive },
+        { key: 'followups', label: 'Follow-ups', icon: CalendarClock, count: overdueCount },
+        { key: 'exec-reports', label: 'Executive reports', icon: UserCheck },
+        { key: 'onboarding', label: 'Staff onboarding', icon: UserPlus },
       ],
     },
-    { label: 'Performance', items: [{ key: 'sales', label: 'Sales' }, { key: 'regional', label: 'Regional report' }] },
+    {
+      label: 'Performance',
+      items: [
+        { key: 'sales', label: 'Sales', icon: TrendingUp },
+        { key: 'regional', label: 'Regional report', icon: MapPin },
+      ],
+    },
     {
       label: 'Inventory',
       items: [
-        { key: 'inventory', label: 'Stock' },
-        { key: 'orders', label: 'Orders & tracking', count: lateOrders },
+        { key: 'inventory', label: 'Stock', icon: Package },
+        { key: 'orders', label: 'Orders & tracking', icon: Truck, count: lateOrders },
       ],
     },
     {
       label: 'Support',
       items: [
-        { key: 'enquiries', label: 'Enquiries', count: enquiries.filter(e => e.status === 'new').length },
-        { key: 'complaints', label: 'Complaints', count: toAssign },
+        { key: 'enquiries', label: 'Enquiries', icon: Inbox, count: enquiries.filter(e => e.status === 'new').length },
+        { key: 'complaints', label: 'Complaints', icon: MessageSquareWarning, count: toAssign },
       ],
     },
-    { label: 'Reports', items: [{ key: 'reports', label: 'Reports & Analytics' }] },
+    { label: 'Reports', items: [{ key: 'reports', label: 'Reports & Analytics', icon: BarChart3 }] },
   ];
 
   const handleNavigate = (page: string, callerId?: number) => {
@@ -224,95 +232,31 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
   };
 
   return (
-    <div>
+    <div className="card-layout">
       {toastMessage && <div className={`toast ${toastMessage.startsWith('⚠️') ? 'toast-error' : ''}`}>{toastMessage.startsWith('⚠️') ? toastMessage : `✅ ${toastMessage}`}</div>}
 
-      <div className="app-header">
-      <div className="masthead">
-        <div className="masthead-bar">
-          <div className="brand">
-            <div className="brand-mark">🌾</div>
-            <div>
-              <div className="brand-name">Manikstu Telecalling</div>
-              <div className="brand-tag">
-                <span>Head Telecalling Dashboard</span>
-                <span className="manager-badge">Telecalling Head</span>
-              </div>
-            </div>
-          </div>
-          <div className="masthead-right">
-            <span>Shift · 9:00–18:00</span>
-            <span style={{ opacity: 0.5 }}>|</span>
-            <span>Staff ID: {user.staffId}</span>
-
-            <div className="masthead-user">
-              <div className="who" style={{ cursor: 'default' }}>
-                <div className="avatar">{user.initials}</div>
-                <div>
-                  <div className="who-name">{user.name}</div>
-                  <div className="who-role">Telecalling Head</div>
-                </div>
-              </div>
-              <LogoutButton />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <HeaderFrieze />
-      </div>
-
       <div className="shell">
-        <aside className="sidebar">
-          {navGroups.map(group => (
-            <div key={group.label} className="nav-group">
-              <div className="nav-group-label">{group.label}</div>
-              {group.items.map(item => (
-                <button
-                  key={item.key}
-                  className={`nav-item ${activePage === item.key ? 'active' : ''}`}
-                  onClick={() => handleNavigate(item.key)}
-                >
-                  <span className="dot"></span>
-                  {item.label}
-                  {'count' in item && item.count !== undefined && item.count > 0 && (
-                    <span className="count" suppressHydrationWarning>{item.count}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        </aside>
+        <Sidebar groups={navGroups} activePage={activePage} onSelectPage={page => handleNavigate(page)} />
 
         <main className="main">
-          <div className="topbar">
-            <div>
-              <h1>{currentMeta.title}</h1>
-              <div className="sub">{currentMeta.sub}</div>
-            </div>
-            <div className="topbar-tools">
-              <SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />
-              <div className="search">
-                <Search size={16} style={{ color: 'var(--ink-soft)' }} />
-                <input
-                  type="text"
-                  placeholder={activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'exec-reports' ? 'Search executives by name or region…' : activePage === 'orders' ? 'Search orders by name, phone, order no., AWB…' : 'Search leads by name or phone…'}
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'inventory' && activePage !== 'exec-reports') {
-                      setActivePage('leads');
-                      setFocusCaller(undefined);
-                    }
-                  }}
-                />
-              </div>
-              <button className="icon-btn" title="Team alerts" onClick={() => setIsNotifsOpen(o => !o)}>
-                <Bell size={18} />
-                {notifications.length > 0 && <span className="badge">{notifications.length}</span>}
-              </button>
-            </div>
-          </div>
+          <Topbar
+            title={currentMeta.title}
+            subtitle={currentMeta.sub}
+            search={{
+              query: searchQuery,
+              placeholder: activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'exec-reports' ? 'Search executives by name or region…' : activePage === 'orders' ? 'Search orders by name, phone, order no., AWB…' : 'Search leads by name or phone…',
+              onChange: q => {
+                setSearchQuery(q);
+                if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'inventory' && activePage !== 'exec-reports') {
+                  setActivePage('leads');
+                  setFocusCaller(undefined);
+                }
+              },
+            }}
+            notifications={{ count: notifications.length, onToggle: () => setIsNotifsOpen(o => !o), title: 'Team alerts' }}
+            status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
+            profile={{ name: user.name, role: 'Telecalling Head', initials: user.initials, detail: `Staff ID ${user.staffId} · Shift 9:00–18:00` }}
+          />
 
           {activePage === 'overview' && (
             <TeamOverview
@@ -368,13 +312,12 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
           {activePage === 'complaints' && (
             <TeamComplaints complaints={complaints} onComplaintsChange={setComplaints} headName={user.name} searchQuery={searchQuery} onToast={showToast} />
           )}
+          <footer className="site-footer">
+            <div>© 2026 Manikstu Agri Network · Telecalling</div>
+          </footer>
+          <FooterFrieze />
         </main>
       </div>
-
-      <footer className="site-footer">
-        <div>© 2026 Manikstu Agri Network · Odisha</div>
-      </footer>
-      <FooterFrieze />
 
       <NotificationsDrawer
         isOpen={isNotifsOpen}
