@@ -1,22 +1,23 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarClock, Headphones, History, Upload } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { BarChart3, CalendarClock, History, LayoutDashboard, ListChecks } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
-import CallDeskView, { CallForm } from './calling-executive/CallDeskView';
+import CeOverview from './calling-executive/CeOverview';
+import type { CallForm } from './calling-executive/CallDeskView';
 import CallHistoryView from './calling-executive/CallHistoryView';
 import CallbacksView from './calling-executive/CallbacksView';
+import CeFollowupsView from './calling-executive/CeFollowupsView';
 import CeReportsView from './calling-executive/CeReportsView';
 import CallModal, { CallTarget, dial } from './calling-executive/CallModal';
-import { TODAY, CallOutcome } from '../data/managerDashboard';
+import { TODAY, TRACKER_SALES, CallOutcome } from '../data/managerDashboard';
 import { dayStart } from '../lib/format';
 import type { CallInput, TrackerState } from '../lib/trackerOps';
 import { useTracker } from '../lib/useTracker';
 import SyncBadge from './SyncBadge';
-import CallReportImport from './calling-executive/CallReportImport';
-import { stageOf } from './telecaller/tcData';
+import { TeamData, stageOf } from './telecaller/tcData';
 import { QueueItem, buildQueue, callerFor } from './calling-executive/queue';
 import type { SessionUser } from '../lib/session';
 
@@ -38,7 +39,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
   const firstName = user.name.split(' ')[0];
   const me = callerFor(user.name);
 
-  const [activePage, setActivePage] = useState('desk');
+  const [activePage, setActivePage] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -46,62 +47,27 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
   // saved here reach the head's dashboard and the manager's Team overview.
   const sync = useTracker(tracker);
   const { leads, followups, activities } = sync.data;
+  const teamData: TeamData = useMemo(
+    () => ({ leads, followups, activities, sales: TRACKER_SALES }),
+    [leads, followups, activities],
+  );
 
   const myLeads = useMemo(() => leads.filter(l => l.assigned_to === me.id), [leads, me.id]);
   const myFollowups = useMemo(() => followups.filter(f => f.caller_id === me.id), [followups, me.id]);
   const myActivities = useMemo(() => activities.filter(a => a.caller_id === me.id), [activities, me.id]);
-  const todayCalls = useMemo(() => myActivities.filter(a => a.created_at.startsWith(TODAY)), [myActivities]);
 
-  // Leads handled or skipped in this session drop out of (or to the back of) the queue.
+  // Leads called this session drop out of the "to call now" queue count.
   const [handled, setHandled] = useState<number[]>([]);
-  const [skipped, setSkipped] = useState<number[]>([]);
   const queue = useMemo(() => {
-    const all = buildQueue(myLeads, myFollowups, myActivities).filter(q => !handled.includes(q.lead.id));
-    const fresh = all.filter(q => !skipped.includes(q.lead.id));
-    const later = skipped.map(id => all.find(q => q.lead.id === id)).filter((q): q is QueueItem => !!q);
-    return [...fresh, ...later];
-  }, [myLeads, myFollowups, myActivities, handled, skipped]);
-
-  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
-  const current = queue.find(q => q.lead.id === selectedLeadId) ?? queue[0];
-
-  const [form, setForm] = useState<CallForm>(() => emptyForm(current?.lead.stage_id ?? 0, current?.followup?.note ?? ''));
-  const [formLeadId, setFormLeadId] = useState<number | null>(current?.lead.id ?? null);
-  if ((current?.lead.id ?? null) !== formLeadId) {
-    // A different lead is on the desk: reset the form for it.
-    setFormLeadId(current?.lead.id ?? null);
-    setForm(emptyForm(current?.lead.stage_id ?? 0, current?.followup?.note ?? ''));
-  }
-
-  // Live call timer
-  const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
-  const [callEndedAt, setCallEndedAt] = useState<number | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const callLive = callStartedAt !== null && callEndedAt === null;
-  useEffect(() => {
-    if (!callLive) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [callLive]);
-  const elapsedSec = callStartedAt === null ? 0 : Math.max(0, Math.floor(((callEndedAt ?? now) - callStartedAt) / 1000));
+    return buildQueue(myLeads, myFollowups, myActivities).filter(q => !handled.includes(q.lead.id));
+  }, [myLeads, myFollowups, myActivities, handled]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const startCall = () => {
-    setNow(Date.now());
-    setCallStartedAt(Date.now());
-    setCallEndedAt(null);
-  };
-
-  const resetTimer = () => {
-    setCallStartedAt(null);
-    setCallEndedAt(null);
-  };
-
-  /** Records a call (activity, lead stage, follow-ups) on the server and takes the lead out of the queue. */
+  /** Records a call (activity, lead stage, follow-ups) on the server. */
   const logCall = async (
     { lead, followup }: CallTarget,
     outcome: CallOutcome,
@@ -118,7 +84,6 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
       next: form.scheduleNext && form.nextDate ? { date: form.nextDate, note: form.nextNote } : null,
     };
     setHandled(prev => [...prev, lead.id]);
-    setSkipped(prev => prev.filter(id => id !== lead.id));
     try {
       await sync.run({ type: 'log-call', call });
       const stageChanged = form.stageId !== lead.stage_id;
@@ -129,21 +94,9 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     }
   };
 
-  // Call dashboard: save the call on the desk and move to the next lead.
-  const handleSave = (outcome: CallOutcome) => {
-    if (!current) return;
-    logCall(current, outcome, form, outcome === 'Connected' && callStartedAt !== null ? elapsedSec : null);
-    setSelectedLeadId(null);
-    resetTimer();
-  };
-
-  // Call desk page: the Call button dials straight away and opens the calling window there.
+  // The Call button dials straight away and opens the calling window.
   const [callTarget, setCallTarget] = useState<CallTarget | null>(null);
-  const startCallFromDesk = (leadId: number, followupId?: number) => {
-    if (callLive) {
-      showToast('Finish the call on the Call dashboard first');
-      return;
-    }
+  const startCall = (leadId: number, followupId?: number) => {
     const lead = myLeads.find(l => l.id === leadId);
     if (!lead) return;
     const followup =
@@ -152,6 +105,12 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
       myFollowups.filter(f => f.lead_id === leadId && f.status !== 'done').sort((a, b) => a.due_at.localeCompare(b.due_at))[0];
     dial(lead.phone);
     setCallTarget({ lead, followup });
+  };
+
+  /** "Start calling": open the next lead in the queue. */
+  const startNext = () => {
+    if (queue[0]) startCall(queue[0].lead.id);
+    else showToast('No leads waiting to be called right now');
   };
 
   const completeFollowup = async (followupId: number) => {
@@ -163,44 +122,27 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     }
   };
 
-  const handleSkip = () => {
-    if (!current) return;
-    setSkipped(prev => [...prev.filter(id => id !== current.lead.id), current.lead.id]);
-    setSelectedLeadId(null);
-    resetTimer();
-  };
-
-  const selectLead = (leadId: number) => {
-    setSelectedLeadId(leadId);
-    resetTimer();
-  };
-
-  const leadHistory = useMemo(() => {
-    if (!current) return [];
-    return activities.filter(a => a.lead_id === current.lead.id).sort((a, b) => b.created_at.localeCompare(a.created_at));
-  }, [activities, current]);
-
   const dueCallbacks = myFollowups.filter(
     f => f.status !== 'done' && (f.status === 'missed' || dayStart(f.due_at) <= dayStart(TODAY))
   ).length;
 
   const pageMeta: Record<string, { title: string; sub: string }> = {
-    desk:      { title: 'Call Dashboard', sub: `Work down the queue, ${firstName}. Pick an outcome to save the call and open the next one.` },
+    overview:  { title: `Namaskar, ${firstName}`, sub: 'Your day, callbacks, leads and performance at a glance.' },
     history:   { title: 'Call History', sub: 'Every call you have logged, with outcome, duration and note.' },
     callbacks: { title: 'Call Desk',    sub: 'Your assigned leads, calls made, pending calls and callbacks in one place.' },
-    import:    { title: 'Import Call Report', sub: 'Upload your calling report (Excel, CSV or PDF). Each row becomes a call on your lead, and the head and manager see it straight away.' },
+    followups: { title: 'Follow-ups',   sub: 'Every callback you owe — overdue, due today and upcoming.' },
     reports:   { title: 'Reports',      sub: 'Your calling performance, and reports you can download as Excel or PDF.' },
   };
-  const currentMeta = pageMeta[activePage] ?? pageMeta.desk;
+  const currentMeta = pageMeta[activePage] ?? pageMeta.overview;
 
   const navGroups: NavGroup[] = [
-    { label: 'Calling', items: [{ key: 'desk', label: 'Call dashboard', icon: Headphones, count: queue.length }] },
+    { label: 'Overview', items: [{ key: 'overview', label: 'Overview', icon: LayoutDashboard }] },
     {
       label: 'My work',
       items: [
         { key: 'callbacks', label: 'Call desk', icon: CalendarClock, count: dueCallbacks },
+        { key: 'followups', label: 'Follow-ups', icon: ListChecks, count: dueCallbacks },
         { key: 'history', label: 'Call history', icon: History },
-        { key: 'import', label: 'Import call report', icon: Upload },
       ],
     },
     { label: 'Performance', items: [{ key: 'reports', label: 'Reports', icon: BarChart3 }] },
@@ -223,55 +165,37 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           <Topbar
             title={currentMeta.title}
             subtitle={currentMeta.sub}
-            search={activePage === 'history' || activePage === 'callbacks'
+            search={activePage === 'history' || activePage === 'callbacks' || activePage === 'followups'
               ? { query: searchQuery, onChange: setSearchQuery, placeholder: 'Search by name, phone or note…' }
               : undefined}
             status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
             profile={{ name: user.name, role: 'Calling Executive', initials: user.initials, detail: `Staff ID ${user.staffId} · Morning shift 9:00–18:00` }}
           />
 
-          {activePage === 'desk' && (
-            <CallDeskView
+          {activePage === 'overview' && (
+            <CeOverview
+              data={teamData}
               me={me}
-              queue={queue}
-              current={current}
-              todayCalls={todayCalls}
-              leadHistory={leadHistory}
-              handledCount={handled.length}
-              callLive={callLive}
-              callTimed={callStartedAt !== null}
-              elapsedSec={elapsedSec}
-              form={form}
-              onFormChange={patch => setForm(f => ({ ...f, ...patch }))}
-              onSelect={selectLead}
-              onStartCall={startCall}
-              onEndCall={() => setCallEndedAt(Date.now())}
-              onSave={handleSave}
-              onSkip={handleSkip}
-              followups={myFollowups}
-              leads={myLeads}
-              onCallFollowup={startCallFromDesk}
+              queueCount={queue.length}
+              onStartCalling={startNext}
+              onOpenCallbacks={() => handleNavigate('callbacks')}
+              onCallLead={startCall}
               onFollowupDone={completeFollowup}
+            />
+          )}
+          {activePage === 'followups' && (
+            <CeFollowupsView
+              leads={myLeads}
+              followups={myFollowups}
+              activities={myActivities}
+              searchQuery={searchQuery}
+              onCall={startCall}
+              onDone={completeFollowup}
             />
           )}
           {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
           {activePage === 'callbacks' && (
-            <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} assignments={sync.data.assignments} searchQuery={searchQuery} onOpen={startCallFromDesk} />
-          )}
-          {activePage === 'import' && (
-            <CallReportImport
-              leads={myLeads}
-              onImport={async calls => {
-                try {
-                  const { message } = await sync.run({ type: 'import-report', calls });
-                  showToast(message);
-                } catch (e) {
-                  showToast(`⚠️ ${(e as Error).message}`);
-                  throw e;
-                }
-              }}
-              onToast={showToast}
-            />
+            <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} assignments={sync.data.assignments} searchQuery={searchQuery} onOpen={startCall} />
           )}
           {activePage === 'reports' && (
             <CeReportsView
