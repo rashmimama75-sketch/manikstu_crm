@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Eye, X } from 'lucide-react';
+import {
+  AlertTriangle, Bike, CheckCircle2, ChevronDown, Clock, Copy, Eye, MessageCircle, Package, PackageCheck, ShoppingBag, SlidersHorizontal, Truck, Wallet, X, XCircle,
+} from 'lucide-react';
 import { SalesOrder, TELECALLERS, TODAY } from '../../data/managerDashboard';
 import { Complaint } from '../../data/complaints';
 import { daysBefore, nowStamp, rupees, shortDate, shortDateTime } from '../../lib/format';
@@ -16,6 +18,9 @@ const PAGE_SIZE = 20;
 
 const soldBy = (o: SalesOrder) => (o.caller_id === null ? 'Website' : TELECALLERS.find(t => t.id === o.caller_id)?.name ?? '—');
 const lastAt = (t: Tracking, stage: TrackStage) => t.events.find(e => e.stage === stage)?.at ?? null;
+/** WhatsApp chat with the customer, the tracking update already typed in. */
+const whatsappLink = (o: SalesOrder, t: Tracking) =>
+  `https://wa.me/91${o.phone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(customerUpdate(o, t))}`;
 
 /** "Needs action" shortcuts. */
 const ATTENTION: { key: string; label: string; test: (o: SalesOrder, t: Tracking) => boolean }[] = [
@@ -60,6 +65,26 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
   const [openId, setOpenId] = useState<number | null>(null);
   /** Opened with the eye button: scroll straight to the delivery tracking. */
   const [focusTracking, setFocusTracking] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
+
+  const copyUpdate = async (o: SalesOrder, t: Tracking) => {
+    try {
+      await navigator.clipboard.writeText(customerUpdate(o, t));
+      onToast(`Update for ${o.customer_name} copied: paste it into SMS`);
+    } catch {
+      onToast('Could not copy. Please try again.');
+    }
+  };
 
   const products = useMemo(() => Array.from(new Set(orders.flatMap(o => o.items.map(i => i.product_name)))).sort(), [orders]);
 
@@ -114,92 +139,176 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
 
   const opened = tracked.find(x => x.o.id === openId);
 
+  // Active filters, shown as removable tags
+  const tags = [
+    attn && { key: 'attn', k: 'Needs action', v: attn.label, clear: () => { setAttention(null); setPage(0); } },
+    !attn && stage !== 'all' && { key: 'stage', k: 'Stage', v: stage === 'cancelled' ? 'Cancelled' : STAGE_LABEL[stage], clear: () => { setStage('all'); setPage(0); } },
+    source !== 'all' && { key: 'source', k: 'Type', v: source === 'telecaller' ? 'Team sales' : 'Website', clear: () => { setSource('all'); setPage(0); } },
+    caller !== 'all' && { key: 'caller', k: 'Sold by', v: TELECALLERS.find(t => t.id === Number(caller))?.name ?? '', clear: () => { setCaller('all'); setPage(0); } },
+    product !== 'all' && { key: 'product', k: 'Product', v: product, clear: () => { setProduct('all'); setPage(0); } },
+  ].filter(Boolean) as { key: string; k: string; v: string; clear: () => void }[];
+  const clearFilters = () => { setStage('all'); setAttention(null); setSource('all'); setCaller('all'); setProduct('all'); setPage(0); };
+
+  const lateInTransit = scoped.filter(x => x.t.stage === 'shipped' && x.t.delayed).length;
+  const JOURNEY: { s: TrackStage; icon: typeof Truck; note?: string }[] = [
+    { s: 'placed', icon: ShoppingBag, note: placedToday ? `${placedToday} today` : undefined },
+    { s: 'confirmed', icon: CheckCircle2, note: toPack ? 'to pack' : undefined },
+    { s: 'packed', icon: Package },
+    { s: 'shipped', icon: Truck, note: lateInTransit ? `${lateInTransit} late` : undefined },
+    { s: 'out_for_delivery', icon: Bike, note: ofd ? 'tell them today' : undefined },
+    { s: 'delivered', icon: PackageCheck, note: `${deliveredWeek} this week` },
+  ];
+  const ACTION_CARDS: { key: string; icon: typeof Truck; label: string }[] = [
+    { key: 'late', icon: AlertTriangle, label: 'Late with courier · call first' },
+    { key: 'unconfirmed', icon: Clock, label: 'Not confirmed 2+ days' },
+    { key: 'unshipped', icon: Package, label: 'Confirmed, not shipped 2+ days' },
+    { key: 'cash', icon: Wallet, label: 'Delivered, cash not collected' },
+  ];
+
   return (
     <>
-      <div className="scoreboard">
-        <div className="score"><div className="num">{placedToday}</div><div className="label">Placed today</div></div>
-        <button className="score score-btn" onClick={() => pickStage('confirmed')}><div className="num">{toPack}</div><div className="label">To pack</div></button>
-        <button className="score score-btn" onClick={() => pickStage('shipped')}><div className="num">{inTransit}</div><div className="label">In transit</div></button>
-        <button className="score score-btn" onClick={() => pickStage('out_for_delivery')}><div className="num">{ofd}</div><div className="label">Out for delivery</div></button>
-        <div className="score"><div className="num">{deliveredWeek}</div><div className="label">Delivered this week</div></div>
-        <button className="score score-btn" onClick={() => { setAttention('late'); setPage(0); }}><div className={`num ${late ? 'text-warn' : ''}`}>{late}</div><div className="label">Late with courier</div></button>
-      </div>
+      {/* Order journey: every stage on one route, then what needs a call */}
+      <div className="panel oj">
+        <div className="panel-head">
+          <h2>Order journey</h2>
+          <div className="oj-head-side">
+            <span className="panel-meta">{scoped.length} orders · click a stage to see them</span>
+            <button className={`oj-cancelled ${!attn && stage === 'cancelled' ? 'on' : ''}`} onClick={() => pickStage('cancelled')}>
+              <XCircle size={13} /> {stageCount('cancelled')} cancelled
+            </button>
+          </div>
+        </div>
 
-      <div className="panel" style={{ marginBottom: 20 }}>
-        <div className="stage-flow" role="tablist" aria-label="Tracking stage">
-          {STAGE_FLOW.map((s, i) => (
-            <React.Fragment key={s}>
-              {i > 0 && <span className="stage-arrow" aria-hidden>›</span>}
-              <button role="tab" aria-selected={!attn && stage === s} className={`stage-step ${!attn && stage === s ? 'active' : ''}`} onClick={() => pickStage(s)}>
-                <span className="stage-num">{stageCount(s)}</span>
-                <span className="stage-name">{STAGE_LABEL[s]}</span>
+        <ol className="oj-route">
+          {JOURNEY.map(({ s, icon: Icon, note }) => {
+            const n = stageCount(s);
+            const on = !attn && stage === s;
+            return (
+              <li key={s} className={`oj-stop ${n > 0 ? 'has' : ''} ${on ? 'on' : ''} ${s === 'delivered' ? 'last' : ''}`}>
+                <button onClick={() => pickStage(s)} aria-pressed={on}>
+                  <span className="oj-icon"><Icon size={19} /></span>
+                  <span className="oj-n">{n}</span>
+                  <span className="oj-label">{STAGE_LABEL[s]}</span>
+                  {note && <span className="oj-note">{note}</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="oj-actions">
+          <span className="oj-actions-title">Needs action</span>
+          {ACTION_CARDS.map(({ key, icon: Icon, label }) => {
+            const a = ATTENTION.find(x => x.key === key)!;
+            const n = scoped.filter(x => a.test(x.o, x.t)).length;
+            return (
+              <button key={key} className={`oj-action ${n > 0 ? 'hot' : ''} ${attention === key ? 'on' : ''}`} onClick={() => { setAttention(attention === key ? null : key); setPage(0); }}>
+                <Icon size={16} />
+                <span className="oj-action-n">{n}</span>
+                <span className="oj-action-label">{label}</span>
               </button>
-            </React.Fragment>
-          ))}
-          <button role="tab" aria-selected={!attn && stage === 'cancelled'} className={`stage-step muted ${!attn && stage === 'cancelled' ? 'active' : ''}`} onClick={() => pickStage('cancelled')}>
-            <span className="stage-num">{stageCount('cancelled')}</span>
-            <span className="stage-name">Cancelled</span>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* One filter menu, active filters as tags, export */}
+      <div className="lf-bar">
+        <div className="lf-wrap" ref={menuRef}>
+          <button className={`lf-trigger ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(o => !o)} aria-expanded={menuOpen} aria-haspopup="dialog">
+            <SlidersHorizontal size={15} /> Filters
+            {tags.length > 0 && <span className="lf-count">{tags.length}</span>}
+            <ChevronDown size={15} className="lf-caret" />
           </button>
+          {menuOpen && (
+            <div className="lf-menu ord-menu" role="dialog" aria-label="Filter orders">
+              <div className="lf-section">
+                <div className="lf-title">Stage</div>
+                <button className={`lf-option ${!attn && stage === 'all' ? 'on' : ''}`} onClick={() => { setStage('all'); setAttention(null); setPage(0); }}>
+                  <span className="lf-radio" />All stages<span className="lf-n">{scoped.length}</span>
+                </button>
+                {[...STAGE_FLOW, 'cancelled' as TrackStage].map(s => (
+                  <button key={s} className={`lf-option ${!attn && stage === s ? 'on' : ''}`} onClick={() => { setStage(s); setAttention(null); setPage(0); }}>
+                    <span className="lf-radio" />{s === 'cancelled' ? 'Cancelled' : STAGE_LABEL[s]}<span className="lf-n">{stageCount(s)}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="lf-section">
+                <div className="lf-title">Needs action</div>
+                {ATTENTION.map(a => (
+                  <button key={a.key} className={`lf-option ${attention === a.key ? 'on' : ''}`} onClick={() => { setAttention(attention === a.key ? null : a.key); setPage(0); }}>
+                    <span className="lf-radio" />{a.label}<span className="lf-n">{scoped.filter(x => a.test(x.o, x.t)).length}</span>
+                  </button>
+                ))}
+                <div className="lf-title lf-sub">Order type</div>
+                <div className="lf-pills">
+                  {(['all', 'telecaller', 'website'] as Source[]).map(s => (
+                    <button key={s} className={`lf-pill ${source === s ? 'on' : ''}`} onClick={() => { setSource(s); setPage(0); }}>
+                      {s === 'all' ? 'All' : s === 'telecaller' ? 'Team sales' : 'Website'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="lf-section">
+                <div className="lf-title">Sold by</div>
+                <div className="lf-pills">
+                  <button className={`lf-pill ${caller === 'all' ? 'on' : ''}`} onClick={() => { setCaller('all'); setPage(0); }}>Anyone</button>
+                  {TELECALLERS.map(t => (
+                    <button key={t.id} className={`lf-pill ${caller === String(t.id) ? 'on' : ''}`} onClick={() => { setCaller(String(t.id)); setPage(0); }}>{t.name.split(' ')[0]}</button>
+                  ))}
+                </div>
+                <div className="lf-title lf-sub">Product</div>
+                <div className="lf-pills lf-scroll">
+                  <button className={`lf-pill ${product === 'all' ? 'on' : ''}`} onClick={() => { setProduct('all'); setPage(0); }}>All</button>
+                  {products.map(p => (
+                    <button key={p} className={`lf-pill ${product === p ? 'on' : ''}`} onClick={() => { setProduct(p); setPage(0); }}>{p}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="lf-foot">
+                <button className="link-btn lf-reset" onClick={clearFilters}>Reset all</button>
+                <button className="btn-primary btn-small" onClick={() => setMenuOpen(false)}>Show {rows.length} orders</button>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
 
-      <div className="alert-strip">
-        <span className="alert-strip-label">Needs action</span>
-        {ATTENTION.map(a => {
-          const n = scoped.filter(x => a.test(x.o, x.t)).length;
-          return (
-            <button key={a.key} className={`alert-pill ${attention === a.key ? 'active' : ''} ${n === 0 ? 'zero' : ''}`} onClick={() => { setAttention(attention === a.key ? null : a.key); setPage(0); }}>
-              {a.label} · {n}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="page-toolbar">
-        <div className="filters">
-          {(['all', 'telecaller', 'website'] as Source[]).map(s => (
-            <button key={s} className={`filter-chip ${source === s ? 'active' : ''}`} onClick={() => { setSource(s); setPage(0); }}>
-              {s === 'all' ? 'All orders' : s === 'telecaller' ? 'Team sales' : 'Website'}
-            </button>
+        <div className="lf-tags">
+          {tags.map(tag => (
+            <span key={tag.key} className="lf-tag">
+              <span className="lf-tag-k">{tag.k}</span> {tag.v}
+              <button onClick={tag.clear} aria-label={`Remove ${tag.k} filter`}><X size={12} /></button>
+            </span>
           ))}
+          {tags.length > 0 && <button className="link-btn lf-clear" onClick={clearFilters}>Clear all</button>}
         </div>
-        <div className="toolbar-actions">
-          {(stage !== 'all' || attn) && <button className="link-btn clear-alert" onClick={() => { setStage('all'); setAttention(null); }}>Show all stages</button>}
-          <ExportMenu onExport={runExport} />
-        </div>
-      </div>
 
-      <div className="filter-row">
-        <select className="filter-select" value={caller} onChange={e => { setCaller(e.target.value); setPage(0); }} aria-label="Sold by">
-          <option value="all">Any telecaller</option>
-          {TELECALLERS.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_active ? '' : ' (inactive)'}</option>)}
-        </select>
-        <select className="filter-select" value={product} onChange={e => { setProduct(e.target.value); setPage(0); }} aria-label="Product">
-          <option value="all">All products</option>
-          {products.map(p => <option key={p}>{p}</option>)}
-        </select>
+        <span className="lf-total">{rows.length} orders</span>
+        <ExportMenu onExport={runExport} />
       </div>
 
       <div className="panel">
         <div className="table-wrap">
           <table className="orders-table">
             <thead>
-              <tr><th>Order</th><th>Customer</th><th>Products</th><th>Sold by</th><th className="num-col">Amount</th><th>Tracking</th><th>Courier</th><th aria-label="Track"></th></tr>
+              <tr><th>Order</th><th>Customer</th><th>Products</th><th className="num-col">Amount</th><th>Tracking</th><th>Courier</th><th>Inform customer</th></tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <EmptyRow cols={8} text="No orders here." />}
+              {rows.length === 0 && <EmptyRow cols={7} text="No orders here." />}
               {rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE).map(({ o, t }) => (
-                <tr key={o.id} className="clickable" onClick={() => { setOpenId(o.id); setFocusTracking(false); }}>
+                <tr key={o.id} className={`clickable ${t.delayed ? 'fu-row-overdue' : ''}`} onClick={() => { setOpenId(o.id); setFocusTracking(false); }}>
                   <td className="order-cell">
                     <div className="order-no">{o.order_number}</div>
-                    <div className="loc">{shortDate(o.created_at)}</div>
+                    <div className="loc">{shortDate(o.created_at)} · {soldBy(o)}</div>
                   </td>
                   <td className="cust">{o.customer_name}<div className="loc">{o.city} · {o.phone}</div></td>
                   <td>
                     {o.items[0].product_name} × {o.items[0].quantity}
                     {o.items.length > 1 && <div className="loc">+ {o.items.length - 1} more</div>}
                   </td>
-                  <td>{soldBy(o)}</td>
                   <td className="num-col">{rupees(o.total)}<div className="loc">{o.payment_method} · {o.payment_status}</div></td>
                   <td>
                     <TrackBar t={t} />
@@ -209,13 +318,14 @@ export default function TeamOrders({ orders, complaints, searchQuery, onToast }:
                     </div>
                   </td>
                   <td>{t.courier ? <>{t.courier}<div className="loc">{t.awb}</div></> : <span className="loc">—</span>}</td>
-                  <td className="track-action">
-                    <button
-                      className="icon-btn eye-btn"
-                      title="Track delivery status"
-                      aria-label={`Track delivery of ${o.order_number}`}
-                      onClick={e => { e.stopPropagation(); setOpenId(o.id); setFocusTracking(true); }}
-                    >
+                  <td className="ord-inform" onClick={e => e.stopPropagation()}>
+                    <a className="ord-wa" href={whatsappLink(o, t)} target="_blank" rel="noreferrer" title="Send the tracking update on WhatsApp">
+                      <MessageCircle size={14} /> WhatsApp
+                    </a>
+                    <button className="icon-btn eye-btn" title="Copy the update for SMS" aria-label={`Copy update for ${o.customer_name}`} onClick={() => copyUpdate(o, t)}>
+                      <Copy size={15} />
+                    </button>
+                    <button className="icon-btn eye-btn" title="Track delivery status" aria-label={`Track delivery of ${o.order_number}`} onClick={() => { setOpenId(o.id); setFocusTracking(true); }}>
                       <Eye size={16} />
                     </button>
                   </td>
@@ -373,7 +483,8 @@ function OrderTrackDrawer({ order: o, tracking: t, complaints, focusTracking, on
         </div>
 
         <div className="drawer-actions">
-          <button className="btn-primary btn-small" onClick={copyUpdate}><Copy size={14} /> Copy update for customer</button>
+          <a className="btn-primary btn-small" href={whatsappLink(o, t)} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Send on WhatsApp</a>
+          <button className="btn-secondary btn-small" onClick={copyUpdate}><Copy size={14} /> Copy update</button>
           <a className="btn-secondary btn-small" href={`tel:${o.phone}`}>Call customer</a>
         </div>
       </aside>

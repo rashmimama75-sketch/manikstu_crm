@@ -1,5 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { Mail, MessageCircle, Phone, Upload, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertTriangle, Briefcase, CheckCheck, ChevronDown, Eye, Handshake, HelpCircle, Inbox, Mail, MailQuestion, MessageCircle, Phone,
+  Search, ShoppingCart, SlidersHorizontal, Upload, UserCheck, X, type LucideIcon,
+} from 'lucide-react';
 import {
   TODAY,
   TELECALLERS,
@@ -55,6 +58,12 @@ const ALERTS: Record<Alert, { label: string; test: (e: WebEnquiry) => boolean }>
   'read-no-reply': { label: 'read but never replied', test: e => e.status === 'read' },
 };
 
+const TYPE_ICON: Record<EnquiryType, LucideIcon> = { sales: ShoppingCart, partnership: Handshake, career: Briefcase, general: HelpCircle };
+const ALERT_ICON: Record<Alert, LucideIcon> = { 'new-24h': AlertTriangle, 'sales-2d': ShoppingCart, 'read-no-reply': MailQuestion };
+// Type colours in bar order, checked for colour-blind separation; the legend always names them.
+const TYPE_COLOR: Record<EnquiryType, string> = { sales: '#3A7030', partnership: '#2A78D6', career: '#C4952A', general: '#8A7FD0' };
+const RANGE_LABEL: Record<DateRange, string> = { '7d': 'Last 7 days', month: 'This month', all: 'All time' };
+
 const hoursBetween = (from: string, to: string) =>
   (new Date(`${to}:00`).getTime() - new Date(`${from}:00`).getTime()) / 3_600_000;
 const callerName = (id: number) => TELECALLERS.find(t => t.id === id)?.name ?? '—';
@@ -92,6 +101,17 @@ export default function EnquiriesView({
   /** Enquiries being assigned to a caller (null = picker closed). */
   const [assignIds, setAssignIds] = useState<number[] | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (ev: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(ev.target as Node)) setMenuOpen(false); };
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
 
   /** The lead an enquiry became: linked by id, or (assign mode) the lead with the same phone number. */
   const leadFor = (e: WebEnquiry) =>
@@ -114,6 +134,7 @@ export default function EnquiriesView({
     sales: month.filter(e => e.type === 'sales').length,
     partnership: month.filter(e => e.type === 'partnership').length,
     career: month.filter(e => e.type === 'career').length,
+    monthTotal: month.length,
   };
 
   // 2–3. Filtering
@@ -136,6 +157,23 @@ export default function EnquiriesView({
   const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
   const open = enquiries.find(e => e.id === openId) ?? null;
   const resetPage = () => { setPage(0); setSelected(new Set()); };
+
+  const assignedCount = enquiries.filter(e => leadFor(e)).length;
+  const FLOW: { key: string; icon: LucideIcon; n: number; label: string; note: string; filter?: EnquiryStatus }[] = [
+    { key: 'new', icon: Inbox, n: tiles.newCount, label: 'New', note: tiles.newCount ? `oldest ${tiles.oldestNew} days` : 'all opened', filter: 'new' },
+    { key: 'read', icon: Eye, n: tiles.waiting, label: 'Read', note: 'waiting for reply', filter: 'read' },
+    { key: 'replied', icon: CheckCheck, n: tiles.replied, label: 'Replied', note: `this month · avg ${tiles.avgReply}`, filter: 'replied' },
+    { key: 'assigned', icon: UserCheck, n: assignedCount, label: 'Assigned', note: canAssign ? 'to callers as leads' : 'turned into leads' },
+  ];
+
+  // Active filters, shown as removable tags
+  const filterTags = [
+    alert && { key: 'alert', k: 'Needs action', v: ALERTS[alert].label, clear: () => { setAlert(null); resetPage(); } },
+    !alert && statusFilter !== 'all' && { key: 'status', k: 'Status', v: statusFilter[0].toUpperCase() + statusFilter.slice(1), clear: () => { setStatusFilter('all'); resetPage(); } },
+    !alert && typeFilter !== 'all' && { key: 'type', k: 'Type', v: typeFilter[0].toUpperCase() + typeFilter.slice(1), clear: () => { setTypeFilter('all'); resetPage(); } },
+    !alert && dateRange !== 'all' && { key: 'range', k: 'Received', v: RANGE_LABEL[dateRange], clear: () => { setDateRange('all'); resetPage(); } },
+  ].filter(Boolean) as { key: string; k: string; v: string; clear: () => void }[];
+  const clearFilters = () => { setAlert(null); setStatusFilter('all'); setTypeFilter('all'); setDateRange('all'); setQuery(''); resetPage(); };
 
   // ---- Updates -----------------------------------------------------------------------------
   const patch = (ids: number[], change: (e: WebEnquiry) => WebEnquiry | null, message: string) => {
@@ -232,85 +270,145 @@ export default function EnquiriesView({
 
   return (
     <>
-      {/* 1. Summary tiles */}
-      <div className="scoreboard">
-        <div className="score">
-          <div className="num">{tiles.newCount} <small className="warn">oldest {tiles.oldestNew}d</small></div>
-          <div className="label">New / unread</div>
+      {/* 1. Inbox overview: reply flow, mix by type, what needs action */}
+      <div className="panel oj enq-inbox">
+        <div className="panel-head">
+          <h2>Enquiry inbox</h2>
+          <span className="panel-meta">{tiles.monthTotal} this month · replies take {tiles.avgReply} on average</span>
         </div>
-        <div className="score">
-          <div className="num">{tiles.waiting}</div>
-          <div className="label">Read, waiting for reply</div>
+
+        <div className="enq-overview">
+          <div>
+            <div className="enq-sub">Reply flow · click a step</div>
+            <ol className="oj-route enq-flow">
+              {FLOW.map(({ key, icon: Icon, n, label, note, filter }) => {
+                const on = !!filter && !alert && statusFilter === filter;
+                const body = (
+                  <>
+                    <span className="oj-icon"><Icon size={19} /></span>
+                    <span className="oj-n">{n}</span>
+                    <span className="oj-label">{label}</span>
+                    <span className="oj-note">{note}</span>
+                  </>
+                );
+                return (
+                  <li key={key} className={`oj-stop ${n > 0 ? 'has' : ''} ${on ? 'on' : ''} ${key === 'assigned' ? 'last' : ''} ${key === 'new' && n > 0 ? 'urgent' : ''}`}>
+                    {filter
+                      ? <button onClick={() => { setStatusFilter(on ? 'all' : filter); setAlert(null); resetPage(); }} aria-pressed={on}>{body}</button>
+                      : <div className="oj-static">{body}</div>}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+
+          <div className="enq-mix">
+            <div className="enq-sub">By type · this month</div>
+            <div className="enq-bar" role="img" aria-label={TYPES.map(t => `${t}: ${month.filter(e => e.type === t).length}`).join(', ')}>
+              {TYPES.map(t => {
+                const n = month.filter(e => e.type === t).length;
+                return n > 0 && <span key={t} style={{ flex: n, background: TYPE_COLOR[t] }} title={`${t}: ${n}`} />;
+              })}
+            </div>
+            <ul className="enq-legend">
+              {TYPES.map(t => {
+                const Icon = TYPE_ICON[t];
+                const on = !alert && typeFilter === t;
+                const openN = enquiries.filter(e => e.type === t && (e.status === 'new' || e.status === 'read')).length;
+                return (
+                  <li key={t}>
+                    <button className={on ? 'on' : ''} onClick={() => { setTypeFilter(on ? 'all' : t); setAlert(null); resetPage(); }}>
+                      <span className="enq-swatch" style={{ background: TYPE_COLOR[t] }} />
+                      <Icon size={14} className="enq-legend-icon" />
+                      <span className="enq-legend-label">{t[0].toUpperCase() + t.slice(1)}</span>
+                      <span className="enq-legend-n">{month.filter(e => e.type === t).length}</span>
+                      <span className={`enq-legend-open ${openN ? 'warn' : ''}`}>{openN} open</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </div>
-        <div className="score">
-          <div className="num">{tiles.replied} <small>avg {tiles.avgReply}</small></div>
-          <div className="label">Replied · this month</div>
-        </div>
-        <div className="score">
-          <div className="num">{tiles.sales}</div>
-          <div className="label">Sales enquiries · this month</div>
-        </div>
-        <div className="score">
-          <div className="num">{tiles.partnership}</div>
-          <div className="label">Partnership · this month</div>
-        </div>
-        <div className="score">
-          <div className="num">{tiles.career}</div>
-          <div className="label">Career · this month</div>
+
+        <div className="oj-actions enq-actions">
+          <span className="oj-actions-title">Needs action</span>
+          {(Object.keys(ALERTS) as Alert[]).map(key => {
+            const n = enquiries.filter(ALERTS[key].test).length;
+            const Icon = ALERT_ICON[key];
+            return (
+              <button key={key} className={`oj-action ${n > 0 ? 'hot' : ''} ${alert === key ? 'on' : ''}`} onClick={() => { setAlert(alert === key ? null : key); setStatusFilter('all'); resetPage(); }}>
+                <Icon size={16} />
+                <span className="oj-action-n">{n}</span>
+                <span className="oj-action-label">{ALERTS[key].label[0].toUpperCase() + ALERTS[key].label.slice(1)}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* 2. Needs-action strip */}
-      <div className="alert-strip">
-        <span className="alert-strip-label">Needs action</span>
-        {(Object.keys(ALERTS) as Alert[]).map(key => {
-          const n = enquiries.filter(ALERTS[key].test).length;
-          return (
-            <button
-              key={key}
-              className={`alert-pill ${alert === key ? 'active' : ''} ${n === 0 ? 'zero' : ''}`}
-              onClick={() => { setAlert(alert === key ? null : key); setStatusFilter('all'); resetPage(); }}
-            >
-              <strong>{n}</strong> {ALERTS[key].label}
-            </button>
-          );
-        })}
-        {alert && <button className="link-btn clear-alert" onClick={() => { setAlert(null); resetPage(); }}>Show all enquiries</button>}
-      </div>
-
-      {/* 3. Filters: search, status, type and date on one line; import / export at the end */}
-      <div className="filter-row one-line">
-        <input
-          className="filter-input"
-          type="search"
-          placeholder="Search name, email, phone…"
-          value={query}
-          onChange={e => { setQuery(e.target.value); resetPage(); }}
-        />
-        <select className="filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value as EnquiryStatus | 'all'); resetPage(); }} aria-label="Status">
-          {(['all', ...STATUSES] as const).map(st => (
-            <option key={st} value={st}>
-              {st === 'all' ? 'All statuses' : st[0].toUpperCase() + st.slice(1)} ({st === 'all' ? baseFiltered.length : baseFiltered.filter(e => e.status === st).length})
-            </option>
-          ))}
-        </select>
-        <select className="filter-select" value={typeFilter} onChange={e => { setTypeFilter(e.target.value as EnquiryType | 'all'); resetPage(); }} aria-label="Type">
-          <option value="all">All types</option>
-          {TYPES.map(t => <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t[0].toUpperCase() + t.slice(1)}</option>)}
-        </select>
-        <select className="filter-select" value={dateRange} onChange={e => { setDateRange(e.target.value as DateRange); resetPage(); }} aria-label="Date range">
-          <option value="7d">Last 7 days</option>
-          <option value="month">This month</option>
-          <option value="all">All time</option>
-        </select>
-        <div className="filter-row-end toolbar-actions">
-          {onImportEnquiries && (
-            <button className="btn-secondary import-btn" onClick={() => setImportOpen(true)}><Upload size={15} /> Import</button>
+      {/* 3. One filter menu, tags, search, import / export */}
+      <div className="lf-bar">
+        <div className="lf-wrap" ref={menuRef}>
+          <button className={`lf-trigger ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(o => !o)} aria-expanded={menuOpen} aria-haspopup="dialog">
+            <SlidersHorizontal size={15} /> Filters
+            {filterTags.length > 0 && <span className="lf-count">{filterTags.length}</span>}
+            <ChevronDown size={15} className="lf-caret" />
+          </button>
+          {menuOpen && (
+            <div className="lf-menu enq-menu" role="dialog" aria-label="Filter enquiries">
+              <div className="lf-section">
+                <div className="lf-title">Status</div>
+                {(['all', ...STATUSES] as const).map(st => (
+                  <button key={st} className={`lf-option ${!alert && statusFilter === st ? 'on' : ''}`} onClick={() => { setStatusFilter(st); setAlert(null); resetPage(); }}>
+                    <span className="lf-radio" />{st === 'all' ? 'All statuses' : st[0].toUpperCase() + st.slice(1)}
+                    <span className="lf-n">{st === 'all' ? baseFiltered.length : baseFiltered.filter(e => e.status === st).length}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="lf-section">
+                <div className="lf-title">Type</div>
+                <div className="lf-pills">
+                  <button className={`lf-pill ${typeFilter === 'all' ? 'on' : ''}`} onClick={() => { setTypeFilter('all'); setAlert(null); resetPage(); }}>All</button>
+                  {TYPES.map(t => (
+                    <button key={t} className={`lf-pill ${typeFilter === t ? 'on' : ''}`} onClick={() => { setTypeFilter(t); setAlert(null); resetPage(); }}>{t[0].toUpperCase() + t.slice(1)}</button>
+                  ))}
+                </div>
+                <div className="lf-title lf-sub">Received</div>
+                <div className="lf-pills">
+                  {([['7d', 'Last 7 days'], ['month', 'This month'], ['all', 'All time']] as [DateRange, string][]).map(([k, label]) => (
+                    <button key={k} className={`lf-pill ${dateRange === k ? 'on' : ''}`} onClick={() => { setDateRange(k); setAlert(null); resetPage(); }}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="lf-foot">
+                <button className="link-btn lf-reset" onClick={clearFilters}>Reset all</button>
+                <button className="btn-primary btn-small" onClick={() => setMenuOpen(false)}>Show {filtered.length} enquiries</button>
+              </div>
+            </div>
           )}
-          <ExportMenu onExport={format => exportRows(filtered, format, 'current filters')} />
         </div>
+
+        <div className="lf-tags">
+          {filterTags.map(tag => (
+            <span key={tag.key} className="lf-tag">
+              <span className="lf-tag-k">{tag.k}</span> {tag.v}
+              <button onClick={tag.clear} aria-label={`Remove ${tag.k} filter`}><X size={12} /></button>
+            </span>
+          ))}
+          {filterTags.length > 0 && <button className="link-btn lf-clear" onClick={clearFilters}>Clear all</button>}
+        </div>
+
+        <div className="search enq-search">
+          <Search size={15} style={{ color: 'var(--ink-soft)' }} />
+          <input type="search" placeholder="Search name, email, phone…" value={query} onChange={e => { setQuery(e.target.value); resetPage(); }} />
+        </div>
+        <span className="lf-total">{filtered.length} enquiries</span>
+        {onImportEnquiries && (
+          <button className="btn-secondary import-btn" onClick={() => setImportOpen(true)}><Upload size={15} /> Import</button>
+        )}
+        <ExportMenu onExport={format => exportRows(filtered, format, 'current filters')} />
       </div>
-      {alert && <div className="filter-note filter-note-below">Other filters are paused while a “Needs action” filter is on.</div>}
 
       {/* 4. Bulk actions */}
       {selected.size > 0 && (

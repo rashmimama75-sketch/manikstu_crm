@@ -1,5 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlarmClock, AlertTriangle, CheckCircle2, ChevronDown, Clock, CornerUpLeft, Hourglass, IndianRupee, Plus, RotateCcw,
+  SlidersHorizontal, Star, Timer, TrendingUp, UserMinus, UserPlus, Wrench, X, type LucideIcon,
+} from 'lucide-react';
 import { TELECALLERS, TODAY } from '../../data/managerDashboard';
 import { Assignee, CATEGORIES, Category, Complaint, ComplaintEvent, PRIORITIES, Priority, SLA_HOURS, addHours } from '../../data/complaints';
 import { MONTH, ago, daysBefore, nowStamp, pct, rupees, rupeesShort, shortDate, shortDateTime } from '../../lib/format';
@@ -42,6 +45,19 @@ const ATTENTION: { key: string; label: string; test: (c: Complaint) => boolean }
   { key: 'escalated', label: 'Escalated', test: c => c.status === 'escalated' },
 ];
 
+const ATTENTION_ICON: Record<string, LucideIcon> = {
+  returned: CornerUpLeft, overdue: AlarmClock, inactive: UserMinus, waiting: Hourglass, reopened: RotateCcw, escalated: TrendingUp,
+};
+
+/** The case flow shown on the complaint desk. */
+const FLOW: { t: Tab; icon: LucideIcon; note?: string }[] = [
+  { t: 'To assign', icon: UserPlus, note: 'give to someone' },
+  { t: 'Open', icon: Wrench, note: 'being worked' },
+  { t: 'Waiting', icon: Clock, note: 'on customer or courier' },
+  { t: 'Escalated', icon: AlertTriangle, note: 'needs you' },
+  { t: 'Resolved', icon: CheckCircle2, note: 'fixed' },
+];
+
 const PRIORITY_RANK: Record<Priority, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 const hoursBetween = (a: string, b: string) => (new Date(`${b}:00`).getTime() - new Date(`${a}:00`).getTime()) / 3_600_000;
 const fmtHours = (h: number) => (h < 48 ? `${Math.round(h)}h` : `${(h / 24).toFixed(1)}d`);
@@ -64,6 +80,17 @@ export default function TeamComplaints({ complaints, onComplaintsChange, headNam
   const [openId, setOpenId] = useState<number | null>(null);
   const [assignIds, setAssignIds] = useState<number[] | null>(null);
   const [creating, setCreating] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
   const now = nowStamp();
 
   const who = (a: Assignee) => assigneeName(a, headName);
@@ -214,70 +241,143 @@ export default function TeamComplaints({ complaints, onComplaintsChange, headNam
     }
   };
 
+  const overdueNow = active.filter(c => isOverdue(c, now)).length;
+
+  // Active filters, shown as removable tags
+  const ownerLabel = owner === 'none' ? 'Unassigned' : owner === 'head' ? who('head') : TELECALLERS.find(t => String(t.id) === owner)?.name ?? '';
+  const filterTags = [
+    attn && { key: 'attn', k: 'Needs action', v: attn.label, clear: () => setAttention(null) },
+    !attn && tab !== 'All' && { key: 'tab', k: 'Status', v: tab, clear: () => setTab('All') },
+    priority !== 'all' && { key: 'priority', k: 'Priority', v: PRIORITY_LABEL[priority], clear: () => setPriority('all') },
+    category !== 'all' && { key: 'category', k: 'Category', v: category, clear: () => setCategory('all') },
+    owner !== 'all' && { key: 'owner', k: 'Assigned to', v: ownerLabel, clear: () => setOwner('all') },
+  ].filter(Boolean) as { key: string; k: string; v: string; clear: () => void }[];
+  const clearFilters = () => { setAttention(null); setTab('All'); setPriority('all'); setCategory('all'); setOwner('all'); setSelected(new Set()); };
+
   const opened = complaints.find(c => c.id === openId);
   const assignTargets = assignIds ? complaints.filter(c => assignIds.includes(c.id)) : [];
 
   return (
     <>
-      <div className="scoreboard">
-        <button className="score score-btn" onClick={() => { setTab('To assign'); setAttention(null); }}>
-          <div className={`num ${counts['To assign'] ? 'text-warn' : ''}`}>{complaints.filter(isUnassigned).length}</div><div className="label">To assign</div>
-        </button>
-        <div className="score"><div className="num">{active.length}</div><div className="label">Open · {active.filter(c => c.priority === 'urgent' || c.priority === 'high').length} urgent/high</div></div>
-        <button className="score score-btn" onClick={() => setAttention('overdue')}>
-          <div className={`num ${active.some(c => isOverdue(c, now)) ? 'text-warn' : ''}`}>{active.filter(c => isOverdue(c, now)).length}</div><div className="label">Past deadline</div>
-        </button>
-        <div className="score"><div className="num">{doneRecent.length ? fmtHours(avgHours) : '—'}</div><div className="label">Avg time to resolve · {pct(onTime, doneRecent.length)}% on time</div></div>
-        <div className="score"><div className="num">{done.filter(c => daysBefore(c.resolved_at!) < 7).length}</div><div className="label">Resolved this week</div></div>
-        <div className="score"><div className="num">{rated.length ? `${avgRating.toFixed(1)}★` : '—'}</div><div className="label">Customer rating</div></div>
-        <div className="score"><div className="num">{rupeesShort(refunds)}</div><div className="label">Refunds this month</div></div>
+      {/* Complaint desk: case flow, service health, what needs action */}
+      <div className="panel oj cmp-desk">
+        <div className="panel-head">
+          <h2>Complaint desk</h2>
+          <span className="panel-meta">{active.length} open · {active.filter(c => c.priority === 'urgent' || c.priority === 'high').length} urgent or high</span>
+        </div>
+
+        <div className="enq-overview cmp-overview">
+          <div>
+            <div className="enq-sub">Case flow · click a step</div>
+            <ol className="oj-route cmp-flow">
+              {FLOW.map(({ t, icon: Icon, note }, i) => {
+                const n = complaints.filter(c => inTab(c, t)).length;
+                const on = !attn && tab === t;
+                return (
+                  <li key={t} className={`oj-stop ${n > 0 ? 'has' : ''} ${on ? 'on' : ''} ${i === FLOW.length - 1 ? 'last' : ''} ${t === 'To assign' && n > 0 ? 'urgent' : ''}`}>
+                    <button onClick={() => { setTab(t); setAttention(null); setSelected(new Set()); }} aria-pressed={on}>
+                      <span className="oj-icon"><Icon size={19} /></span>
+                      <span className="oj-n">{n}</span>
+                      <span className="oj-label">{t}</span>
+                      {note && <span className="oj-note">{note}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+
+          <div className="enq-mix">
+            <div className="enq-sub">Service health</div>
+            <ul className="cmp-health">
+              <li className={overdueNow ? 'warn' : undefined}>
+                <AlarmClock size={15} /><span>Past deadline</span>
+                <button className="link-btn" onClick={() => setAttention('overdue')}><strong>{overdueNow}</strong></button>
+              </li>
+              <li><Timer size={15} /><span>Avg time to resolve</span><strong>{doneRecent.length ? fmtHours(avgHours) : '—'}</strong><em>{pct(onTime, doneRecent.length)}% on time</em></li>
+              <li><CheckCircle2 size={15} /><span>Resolved this week</span><strong>{done.filter(c => daysBefore(c.resolved_at!) < 7).length}</strong></li>
+              <li><Star size={15} /><span>Customer rating</span><strong>{rated.length ? `${avgRating.toFixed(1)}★` : '—'}</strong><em>{rated.length} rated</em></li>
+              <li><IndianRupee size={15} /><span>Refunds this month</span><strong>{rupeesShort(refunds)}</strong></li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="oj-actions cmp-actions">
+          <span className="oj-actions-title">Needs action</span>
+          {ATTENTION.map(a => {
+            const n = complaints.filter(a.test).length;
+            const Icon = ATTENTION_ICON[a.key];
+            return (
+              <button key={a.key} className={`oj-action ${n > 0 ? 'hot' : ''} ${attention === a.key ? 'on' : ''}`} onClick={() => setAttention(attention === a.key ? null : a.key)}>
+                <Icon size={16} />
+                <span className="oj-action-n">{n}</span>
+                <span className="oj-action-label">{a.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="alert-strip">
-        <span className="alert-strip-label">Needs action</span>
-        {ATTENTION.map(a => {
-          const n = complaints.filter(a.test).length;
-          return (
-            <button key={a.key} className={`alert-pill ${attention === a.key ? 'active' : ''} ${n === 0 ? 'zero' : ''}`} onClick={() => setAttention(attention === a.key ? null : a.key)}>
-              {a.label} · {n}
-            </button>
-          );
-        })}
-        {attention && <button className="link-btn clear-alert" onClick={() => setAttention(null)}>Clear</button>}
-      </div>
+      {/* One filter menu, tags, new complaint, export */}
+      <div className="lf-bar">
+        <div className="lf-wrap" ref={menuRef}>
+          <button className={`lf-trigger ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(o => !o)} aria-expanded={menuOpen} aria-haspopup="dialog">
+            <SlidersHorizontal size={15} /> Filters
+            {filterTags.length > 0 && <span className="lf-count">{filterTags.length}</span>}
+            <ChevronDown size={15} className="lf-caret" />
+          </button>
+          {menuOpen && (
+            <div className="lf-menu cmp-menu" role="dialog" aria-label="Filter complaints">
+              <div className="lf-section">
+                <div className="lf-title">Status</div>
+                {TABS.map(t => (
+                  <button key={t} className={`lf-option ${!attn && tab === t ? 'on' : ''}`} onClick={() => { setTab(t); setAttention(null); setSelected(new Set()); }}>
+                    <span className="lf-radio" />{t}<span className="lf-n">{counts[t]}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="lf-section">
+                <div className="lf-title">Priority</div>
+                <div className="lf-pills">
+                  <button className={`lf-pill ${priority === 'all' ? 'on' : ''}`} onClick={() => setPriority('all')}>All</button>
+                  {PRIORITIES.map(p => <button key={p} className={`lf-pill ${priority === p ? 'on' : ''}`} onClick={() => setPriority(p)}>{PRIORITY_LABEL[p]}</button>)}
+                </div>
+                <div className="lf-title lf-sub">Category</div>
+                <div className="lf-pills">
+                  <button className={`lf-pill ${category === 'all' ? 'on' : ''}`} onClick={() => setCategory('all')}>All</button>
+                  {CATEGORIES.map(c => <button key={c} className={`lf-pill ${category === c ? 'on' : ''}`} onClick={() => setCategory(c)}>{c}</button>)}
+                </div>
+              </div>
+              <div className="lf-section">
+                <div className="lf-title">Assigned to</div>
+                {[{ v: 'all', label: 'Anyone' }, { v: 'none', label: 'Unassigned' }, { v: 'head', label: who('head') },
+                  ...TELECALLERS.map(t => ({ v: String(t.id), label: `${t.name}${t.is_active ? '' : ' (inactive)'}` }))].map(o => (
+                  <button key={o.v} className={`lf-option ${owner === o.v ? 'on' : ''}`} onClick={() => setOwner(o.v)}>
+                    <span className="lf-radio" />{o.label}
+                  </button>
+                ))}
+              </div>
+              <div className="lf-foot">
+                <button className="link-btn lf-reset" onClick={clearFilters}>Reset all</button>
+                <button className="btn-primary btn-small" onClick={() => setMenuOpen(false)}>Show {rows.length} complaints</button>
+              </div>
+            </div>
+          )}
+        </div>
 
-      <div className="page-toolbar">
-        <div className="filters">
-          {TABS.map(t => (
-            <button key={t} className={`filter-chip ${!attn && tab === t ? 'active' : ''}`} onClick={() => { setTab(t); setAttention(null); setSelected(new Set()); }}>
-              {t} ({counts[t]})
-            </button>
+        <div className="lf-tags">
+          {filterTags.map(tag => (
+            <span key={tag.key} className="lf-tag">
+              <span className="lf-tag-k">{tag.k}</span> {tag.v}
+              <button onClick={tag.clear} aria-label={`Remove ${tag.k} filter`}><X size={12} /></button>
+            </span>
           ))}
+          {filterTags.length > 0 && <button className="link-btn lf-clear" onClick={clearFilters}>Clear all</button>}
         </div>
-        <div className="toolbar-actions">
-          <button className="btn-primary" onClick={() => setCreating(true)}><Plus size={15} /> New complaint</button>
-          <ExportMenu onExport={runExport} />
-        </div>
-      </div>
 
-      <div className="filter-row">
-        <select className="filter-select" value={priority} onChange={e => setPriority(e.target.value as Priority | 'all')} aria-label="Priority">
-          <option value="all">All priorities</option>
-          {PRIORITIES.map(p => <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>)}
-        </select>
-        <select className="filter-select" value={category} onChange={e => setCategory(e.target.value as Category | 'all')} aria-label="Category">
-          <option value="all">All categories</option>
-          {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-        </select>
-        <select className="filter-select" value={owner} onChange={e => setOwner(e.target.value)} aria-label="Assigned to">
-          <option value="all">Anyone</option>
-          <option value="none">Unassigned</option>
-          <option value="head">{who('head')}</option>
-          {TELECALLERS.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_active ? '' : ' (inactive)'}</option>)}
-        </select>
-        {(priority !== 'all' || category !== 'all' || owner !== 'all') && (
-          <button className="link-btn clear-alert" onClick={() => { setPriority('all'); setCategory('all'); setOwner('all'); }}>Clear filters</button>
-        )}
+        <span className="lf-total">{rows.length} complaints</span>
+        <button className="btn-primary cmp-new" onClick={() => setCreating(true)}><Plus size={15} /> New complaint</button>
+        <ExportMenu onExport={runExport} />
       </div>
 
       {selected.size > 0 && (
@@ -357,7 +457,7 @@ export default function TeamComplaints({ complaints, onComplaintsChange, headNam
       </div>
 
       <div className="panel">
-        <div className="panel-head"><h2>By telecaller</h2><span className="panel-meta">resolved and times are for the last 30 days</span></div>
+        <div className="panel-head"><h2>By person</h2><span className="panel-meta">resolved and times are for the last 30 days</span></div>
         <div className="table-wrap">
           <table>
             <thead>
