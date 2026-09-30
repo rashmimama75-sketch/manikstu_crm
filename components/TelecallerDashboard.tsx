@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  BarChart3, CalendarClock, Inbox, LayoutDashboard, MapPin, MessageSquareWarning, Package, TrendingUp, Truck, UserCheck, UserPlus, Users,
+  BarChart3, CalendarClock, Inbox, LayoutDashboard, MapPin, Megaphone, MessageSquareWarning, Package, TrendingUp, Truck, UserCheck, UserPlus, Users,
 } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
@@ -12,6 +12,8 @@ import TeamOverview from './telecaller/TeamOverview';
 import TeamLeads from './telecaller/TeamLeads';
 import TeamFollowups from './telecaller/TeamFollowups';
 import TeamSales from './telecaller/TeamSales';
+import TeamMarketing from './telecaller/TeamMarketing';
+import { Campaign, SAMPLE_CAMPAIGNS } from '../data/marketing';
 import StaffOnboarding from './telecaller/StaffOnboarding';
 import TelecallingExecutivesView from './views/TelecallingExecutivesView';
 import RegionalReportView from './views/RegionalReportView';
@@ -69,6 +71,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
 
   const [alertsCleared, setAlertsCleared] = useState(false);
   const [isNotifsOpen, setIsNotifsOpen] = useState(false);
+  const [campaigns, setCampaigns] = useState<Campaign[]>(SAMPLE_CAMPAIGNS);
   const notifications = alertsCleared
     ? []
     : alerts.map(a => ({
@@ -86,14 +89,15 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
 
   const pageMeta: Record<string, { title: string; sub: string }> = {
     overview:   { title: 'Telecalling Team',     sub: `Good day, ${firstName}. Here's how the whole telecalling team is doing.` },
-    leads:      { title: 'Leads & Assignment',   sub: 'Every lead across the team: find untouched ones and move them to someone with capacity.' },
-    followups:  { title: 'Team Follow-ups',      sub: 'Who owes a callback, and who is falling behind.' },
+    leads:      { title: 'Leads & Assignment',   sub: 'Import leads and hand them out to the calling executives, then keep everyone’s queue balanced.' },
+    followups:  { title: 'Team Follow-ups',      sub: 'Callbacks the calling executives owe: see who is behind and move leads to someone who can call.' },
     regional:   { title: 'Regional Report',      sub: 'Orders by state, district and town: see what farmers bought in each area and download it.' },
     sales:      { title: 'Team Sales',           sub: 'What the team has sold, by telecaller, product and month.' },
+    marketing:  { title: 'WhatsApp Marketing',   sub: 'Send offers, reorder reminders and new-product news to customers and leads on WhatsApp.' },
     'exec-reports': { title: 'Executive Reports', sub: 'Every telecalling executive: calls, leads, follow-ups and sales. Open one for the full report, or download reports.' },
     onboarding: { title: 'Staff Onboarding',     sub: 'Add telecalling staff and create their Staff ID and temporary password.' },
     inventory:  { title: 'Stock',                sub: 'What the team can sell today, what is running out and which customers are waiting.' },
-    orders:     { title: 'Orders & Tracking',    sub: 'What each customer bought and where the parcel is: packed, shipped, out for delivery, delivered.' },
+    orders:     { title: 'Orders & Tracking',    sub: 'Review every order and where its parcel is, then keep the customer informed on WhatsApp or SMS.' },
     enquiries:  { title: 'Website Enquiries',    sub: 'Messages from the website contact form: reply, and assign them to a caller as leads.' },
     reports:    { title: 'Reports & Analytics',  sub: 'Generate and export telecalling, sales, order, stock and support reports as Excel or PDF.' },
     complaints: { title: 'Complaints',           sub: 'Assign each customer complaint to the right telecaller and see it through to resolution.' },
@@ -120,6 +124,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
       label: 'Performance',
       items: [
         { key: 'sales', label: 'Sales', icon: TrendingUp },
+        { key: 'marketing', label: 'Marketing', icon: Megaphone },
         { key: 'regional', label: 'Regional report', icon: MapPin },
       ],
     },
@@ -282,6 +287,9 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
             />
           )}
           {activePage === 'sales' && <TeamSales data={data} onToast={showToast} />}
+          {activePage === 'marketing' && (
+            <TeamMarketing data={data} orders={SALES_ORDERS} campaigns={campaigns} onCampaignsChange={setCampaigns} onToast={showToast} />
+          )}
           {activePage === 'exec-reports' && (
             <TelecallingExecutivesView
               data={data}

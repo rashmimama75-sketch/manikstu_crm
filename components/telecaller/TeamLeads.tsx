@@ -1,42 +1,56 @@
-import React, { useState } from 'react';
-import { LEAD_SOURCES, TELECALLERS, TODAY, VERTICALS } from '../../data/managerDashboard';
-import { Upload } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { LEAD_SOURCES, TELECALLERS, TODAY } from '../../data/managerDashboard';
+import { ChevronDown, FileSpreadsheet, Shuffle, SlidersHorizontal, Upload, UserCheck, X } from 'lucide-react';
 import { ago, daysBefore, shortDate } from '../../lib/format';
 import Modal from '../Modal';
 import ImportLeads, { NewLead } from './ImportLeads';
 import { EmptyRow, StatusChip } from './shared';
-import { TeamData, callerOf, callerName, isOpenLead, isWonLead, lastCallFor, stageName, stageOf, stagesFor, verticalName } from './tcData';
+import { TeamData, callerOf, callerName, isOpenLead, isWonLead, lastCallFor, stageName, stageOf } from './tcData';
+import { initials } from '../views/telecallingMetrics';
 
-type Tab = 'open' | 'new-today' | 'stale' | 'inactive' | 'all';
+type Tab = 'open' | 'new-imports' | 'untouched' | 'completed' | 'all';
 const PAGE_SIZE = 20;
 
 interface Props {
   data: TeamData;
   searchQuery: string;
   initialCaller?: number;
-  onReassign: (leadIds: number[], toCallerId: number) => void;
+  onReassign: (leadIds: number[], toCallerId: number) => void | Promise<void>;
   onImport: (leads: NewLead[]) => void;
   onToast: (message: string) => void;
 }
 
+/** Import leads and hand them out to the calling executives. */
 export default function TeamLeads({ data, searchQuery, initialCaller, onReassign, onImport, onToast }: Props) {
   const [importOpen, setImportOpen] = useState(false);
-  const inactiveIds = new Set(TELECALLERS.filter(t => !t.is_active).map(t => t.id));
-  const [tab, setTab] = useState<Tab>(initialCaller && inactiveIds.has(initialCaller) ? 'inactive' : 'open');
+  const [tab, setTab] = useState<Tab>('open');
   const [caller, setCaller] = useState<number | 'all'>(initialCaller ?? 'all');
-  const [verticalId, setVerticalId] = useState<number | 'all'>('all');
-  const [stageId, setStageId] = useState<number | 'all'>('all');
   const [source, setSource] = useState('all');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [target, setTarget] = useState<number>(TELECALLERS.find(t => t.is_active)!.id);
+  const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const TABS: { key: Tab; label: string; test: (l: typeof data.leads[number]) => boolean }[] = [
-    { key: 'open', label: 'Open', test: isOpenLead },
-    { key: 'new-today', label: 'New today', test: l => l.created_at.startsWith(TODAY) },
-    { key: 'stale', label: 'Untouched 3+ days', test: l => isOpenLead(l) && daysBefore(l.updated_at) >= 3 },
-    { key: 'inactive', label: 'With inactive staff', test: l => isOpenLead(l) && inactiveIds.has(l.assigned_to) },
-    { key: 'all', label: 'All', test: () => true },
+  // Close the filter menu on an outside click or Escape
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
+
+  // Status of a lead in the import → assign → call workflow
+  const calledIds = new Set(data.activities.map(a => a.lead_id));
+  const TABS: { key: Tab; label: string; hint: string; test: (l: typeof data.leads[number]) => boolean }[] = [
+    { key: 'open', label: 'Open', hint: 'Still being worked', test: isOpenLead },
+    { key: 'new-imports', label: 'New imports', hint: 'Added in the last 7 days, not called yet', test: l => daysBefore(l.created_at) < 7 && !calledIds.has(l.id) },
+    { key: 'untouched', label: 'Untouched', hint: 'Open, no activity for 3+ days', test: l => isOpenLead(l) && daysBefore(l.updated_at) >= 3 },
+    { key: 'completed', label: 'Completed', hint: 'Won or lost', test: l => !isOpenLead(l) },
+    { key: 'all', label: 'All', hint: 'Every lead', test: () => true },
   ];
   const tabTest = TABS.find(t => t.key === tab)!.test;
 
@@ -44,8 +58,6 @@ export default function TeamLeads({ data, searchQuery, initialCaller, onReassign
   const filtered = data.leads
     .filter(l => tabTest(l))
     .filter(l => caller === 'all' || l.assigned_to === caller)
-    .filter(l => verticalId === 'all' || l.vertical_id === verticalId)
-    .filter(l => stageId === 'all' || l.stage_id === stageId)
     .filter(l => source === 'all' || l.source === source)
     .filter(l => !q || [l.customer_name, l.phone].some(v => v.toLowerCase().includes(q)))
     .sort((a, b) => a.updated_at.localeCompare(b.updated_at));
@@ -59,80 +71,224 @@ export default function TeamLeads({ data, searchQuery, initialCaller, onReassign
   const toggle = (id: number) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const togglePage = () => setSelected(prev => { const n = new Set(prev); rows.forEach(l => (allOnPage ? n.delete(l.id) : n.add(l.id))); return n; });
 
-  const reassignSelected = () => {
-    const ids = Array.from(selected).filter(id => data.leads.find(l => l.id === id)?.assigned_to !== target);
-    if (ids.length === 0) { onToast(`Those leads are already with ${callerName(target)}`); return; }
-    onReassign(ids, target);
+  // Workload of each calling executive
+  const openOf = (id: number) => data.leads.filter(l => l.assigned_to === id && isOpenLead(l));
+  const board = TELECALLERS.map(t => {
+    const open = openOf(t.id);
+    return {
+      t,
+      open: open.length,
+      newToday: data.leads.filter(l => l.assigned_to === t.id && l.created_at.startsWith(TODAY)).length,
+      stale: open.filter(l => daysBefore(l.updated_at) >= 3).length,
+    };
+  }).sort((a, b) => Number(b.t.is_active) - Number(a.t.is_active));
+  const maxOpen = Math.max(1, ...board.map(b => b.open));
+  const active = TELECALLERS.filter(t => t.is_active);
+
+  const assignTo = async (ids: number[], to: number) => {
+    const move = ids.filter(id => data.leads.find(l => l.id === id)?.assigned_to !== to);
+    if (move.length === 0) { onToast(`Those leads are already with ${callerName(to)}`); return; }
+    setBusy(true);
+    try { await onReassign(move, to); } finally { setBusy(false); }
     setSelected(new Set());
+  };
+
+  /** Share the selected leads across active executives, fewest open leads first. */
+  const shareEvenly = async () => {
+    const ids = Array.from(selected);
+    const load = new Map(active.map(t => [t.id, openOf(t.id).length]));
+    ids.forEach(id => {
+      const l = data.leads.find(x => x.id === id);
+      if (l && isOpenLead(l) && load.has(l.assigned_to)) load.set(l.assigned_to, load.get(l.assigned_to)! - 1);
+    });
+    const plan = new Map<number, number[]>();
+    ids.forEach(id => {
+      const to = Array.from(load.entries()).sort((a, b) => a[1] - b[1])[0][0];
+      plan.set(to, [...(plan.get(to) ?? []), id]);
+      load.set(to, load.get(to)! + 1);
+    });
+    setBusy(true);
+    try {
+      for (const [to, leadIds] of Array.from(plan)) {
+        const move = leadIds.filter(id => data.leads.find(l => l.id === id)?.assigned_to !== to);
+        if (move.length) await onReassign(move, to);
+      }
+      onToast(`${ids.length} leads shared: ${Array.from(plan).map(([to, l]) => `${callerName(to).split(' ')[0]} ${l.length}`).join(', ')}`);
+    } finally { setBusy(false); }
+    setSelected(new Set());
+  };
+
+  /** Pick every open lead of one executive, ready to move. */
+  const selectAllOf = (id: number) => {
+    setTab('open');
+    setCaller(id);
+    setPage(0);
+    setSelected(new Set(openOf(id).map(l => l.id)));
   };
 
   const createImported = (newLeads: NewLead[]) => {
     onImport(newLeads);
     setImportOpen(false);
-    setTab('new-today');
+    setTab('new-imports');
     setCaller('all');
     reset();
   };
 
   // Every source in use, including "Imported file" and anything else brought in by an import
   const sources = Array.from(new Set([...LEAD_SOURCES, ...data.leads.map(l => l.source)]));
-
   const count = (test: (l: typeof data.leads[number]) => boolean) => data.leads.filter(test).length;
+  const importedToday = count(l => l.created_at.startsWith(TODAY) && l.source === 'Imported file');
+
+  // Active filters, shown as removable tags
+  const clearFilters = () => { setTab('all'); setCaller('all'); setSource('all'); reset(); };
+  const tags = [
+    tab !== 'all' && { key: 'status', k: 'Status', v: TABS.find(t => t.key === tab)!.label, clear: () => { setTab('all'); reset(); } },
+    caller !== 'all' && { key: 'caller', k: 'Executive', v: callerName(caller), clear: () => { setCaller('all'); reset(); } },
+    source !== 'all' && { key: 'source', k: 'Source', v: source, clear: () => { setSource('all'); reset(); } },
+  ].filter(Boolean) as { key: string; k: string; v: string; clear: () => void }[];
+  const activeCount = tags.length;
 
   return (
     <>
-      <div className="scoreboard">
-        <div className="score"><div className="num">{count(isOpenLead)}</div><div className="label">Open leads</div></div>
-        <div className="score"><div className="num">{count(l => l.created_at.startsWith(TODAY))}</div><div className="label">New today</div></div>
-        <div className="score"><div className="num">{count(l => isOpenLead(l) && daysBefore(l.updated_at) >= 3)}</div><div className="label">Untouched 3+ days</div></div>
-        <div className="score"><div className="num">{count(l => isOpenLead(l) && inactiveIds.has(l.assigned_to))}</div><div className="label">With inactive staff</div></div>
-        <div className="score"><div className="num">{count(isWonLead)}</div><div className="label">Won</div></div>
-      </div>
-
-      <div className="page-toolbar">
-        <div className="filters">
-          {TABS.map(t => (
-            <button key={t.key} className={`filter-chip ${tab === t.key ? 'active' : ''}`} onClick={() => { setTab(t.key); reset(); }}>
-              {t.label} ({count(t.test)})
-            </button>
-          ))}
-        </div>
-        <div className="toolbar-actions">
-          <button className="btn-primary" onClick={() => setImportOpen(true)}>
-            <Upload size={15} /> Import leads
+      <div className="assign-top">
+        {/* Import */}
+        <div className="panel import-card">
+          <div className="import-card-icon"><FileSpreadsheet size={26} /></div>
+          <h2>Import leads</h2>
+          <p className="loc">Bring in leads from an Excel, CSV or PDF file and hand them to the calling executives.</p>
+          <ol className="import-steps">
+            <li>Upload the file</li>
+            <li>Pick an executive, or share automatically to whoever has the fewest open leads</li>
+            <li>Leads land straight in their call queue</li>
+          </ol>
+          <button className="btn-primary import-card-btn" onClick={() => setImportOpen(true)}>
+            <Upload size={16} /> Import leads
           </button>
+          <div className="loc import-card-foot">
+            {count(l => l.created_at.startsWith(TODAY))} new today{importedToday > 0 ? ` · ${importedToday} from files` : ''}
+          </div>
+        </div>
+
+        {/* Distribution board */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Calling executives</h2>
+            <span className="panel-meta">open leads each · click to see their leads</span>
+          </div>
+          <div className="exec-board">
+            {board.map(({ t, open, newToday, stale }) => (
+              <div
+                key={t.id}
+                className={`exec-load ${caller === t.id ? 'active' : ''} ${t.is_active ? '' : 'inactive'}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => { setCaller(caller === t.id ? 'all' : t.id); reset(); }}
+                onKeyDown={e => { if (e.key === 'Enter') { setCaller(caller === t.id ? 'all' : t.id); reset(); } }}
+              >
+                <div className="exec-load-top">
+                  <div className="avatar">{initials(t.name)}</div>
+                  <div className="exec-load-who">
+                    <div className="exec-load-name">{t.name}</div>
+                    <div className="loc">{t.region}{!t.is_active && <> · <span className="chip muted">Inactive</span></>}</div>
+                  </div>
+                  <div className="exec-load-num">{open}</div>
+                </div>
+                <div className="exec-load-bar"><span style={{ width: `${(open / maxOpen) * 100}%` }} /></div>
+                <div className="exec-load-meta">
+                  <span>+{newToday} today</span>
+                  <span className={stale ? 'text-warn' : undefined}>{stale} untouched 3+ days</span>
+                </div>
+                {!t.is_active && open > 0 && (
+                  <button className="btn-secondary btn-small exec-load-move" onClick={e => { e.stopPropagation(); selectAllOf(t.id); }}>
+                    Move their {open} leads
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="filter-row">
-        <select className="filter-select" value={caller} onChange={e => { setCaller(e.target.value === 'all' ? 'all' : Number(e.target.value)); reset(); }} aria-label="Telecaller">
-          <option value="all">All telecallers</option>
-          {TELECALLERS.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_active ? '' : ' (inactive)'}</option>)}
-        </select>
-        <select className="filter-select" value={verticalId} onChange={e => { setVerticalId(e.target.value === 'all' ? 'all' : Number(e.target.value)); setStageId('all'); reset(); }} aria-label="Product">
-          <option value="all">All products</option>
-          {VERTICALS.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-        </select>
-        <select className="filter-select" value={stageId} disabled={verticalId === 'all'} onChange={e => { setStageId(e.target.value === 'all' ? 'all' : Number(e.target.value)); reset(); }} aria-label="Stage">
-          <option value="all">{verticalId === 'all' ? 'Pick a product for stages' : 'All stages'}</option>
-          {verticalId !== 'all' && stagesFor(verticalId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <select className="filter-select" value={source} onChange={e => { setSource(e.target.value); reset(); }} aria-label="Source">
-          <option value="all">All sources</option>
-          {sources.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+      {/* One filter menu, with the active filters as removable tags */}
+      <div className="lf-bar">
+        <div className="lf-wrap" ref={menuRef}>
+          <button className={`lf-trigger ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(o => !o)} aria-expanded={menuOpen} aria-haspopup="dialog">
+            <SlidersHorizontal size={15} /> Filters
+            {activeCount > 0 && <span className="lf-count">{activeCount}</span>}
+            <ChevronDown size={15} className="lf-caret" />
+          </button>
+
+          {menuOpen && (
+            <div className="lf-menu" role="dialog" aria-label="Filter leads">
+              <div className="lf-section">
+                <div className="lf-title">Status</div>
+                {TABS.map(t => (
+                  <button key={t.key} className={`lf-option ${tab === t.key ? 'on' : ''}`} onClick={() => { setTab(t.key); reset(); }}>
+                    <span className="lf-radio" />
+                    <span className="lf-opt-text">{t.label}<small>{t.hint}</small></span>
+                    <span className="lf-n">{count(t.test)}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="lf-section">
+                <div className="lf-title">Calling executive</div>
+                <button className={`lf-option ${caller === 'all' ? 'on' : ''}`} onClick={() => { setCaller('all'); reset(); }}>
+                  <span className="lf-radio" />Everyone
+                </button>
+                {TELECALLERS.map(t => (
+                  <button key={t.id} className={`lf-option ${caller === t.id ? 'on' : ''}`} onClick={() => { setCaller(t.id); reset(); }}>
+                    <span className="lf-radio" />{t.name}
+                    {t.is_active ? <span className="lf-n">{openOf(t.id).length}</span> : <span className="lf-n muted">inactive</span>}
+                  </button>
+                ))}
+              </div>
+
+              <div className="lf-section">
+                <div className="lf-title">Source</div>
+                <div className="lf-pills">
+                  <button className={`lf-pill ${source === 'all' ? 'on' : ''}`} onClick={() => { setSource('all'); reset(); }}>All</button>
+                  {sources.map(s => (
+                    <button key={s} className={`lf-pill ${source === s ? 'on' : ''}`} onClick={() => { setSource(s); reset(); }}>{s}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="lf-foot">
+                <button className="link-btn lf-reset" onClick={clearFilters}>Reset all</button>
+                <button className="btn-primary btn-small" onClick={() => setMenuOpen(false)}>Show {filtered.length} leads</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="lf-tags">
+          {tags.map(tag => (
+            <span key={tag.key} className="lf-tag">
+              <span className="lf-tag-k">{tag.k}</span> {tag.v}
+              <button onClick={tag.clear} aria-label={`Remove ${tag.k} filter`}><X size={12} /></button>
+            </span>
+          ))}
+          {tags.length > 0 && <button className="link-btn lf-clear" onClick={clearFilters}>Clear all</button>}
+        </div>
+
+        <span className="lf-total">{filtered.length} leads</span>
       </div>
 
-      {selected.size > 0 && (
-        <div className="bulk-bar">
-          <strong>{selected.size} selected</strong>
-          <span>Reassign to</span>
-          <select className="filter-select" value={target} onChange={e => setTarget(Number(e.target.value))} aria-label="Reassign to">
-            {TELECALLERS.filter(t => t.is_active).map(t => <option key={t.id} value={t.id}>{t.name} · {t.region}</option>)}
+      {selected.size > 0 ? (
+        <div className="bulk-bar assign-bar">
+          <strong>{selected.size} lead{selected.size === 1 ? '' : 's'} selected</strong>
+          <span>Assign to</span>
+          <select className="filter-select" value={target} onChange={e => setTarget(Number(e.target.value))} aria-label="Assign to">
+            {active.map(t => <option key={t.id} value={t.id}>{t.name} · {t.region} · {openOf(t.id).length} open</option>)}
           </select>
-          <button className="btn-primary btn-small" onClick={reassignSelected}>Reassign</button>
+          <button className="btn-primary btn-small" disabled={busy} onClick={() => assignTo(Array.from(selected), target)}><UserCheck size={14} /> Assign</button>
+          <span className="loc">or</span>
+          <button className="btn-secondary btn-small" disabled={busy} onClick={shareEvenly}><Shuffle size={14} /> Share evenly</button>
           <button className="link-btn" onClick={() => setSelected(new Set())}>Clear</button>
         </div>
+      ) : (
+        <div className="assign-hint loc">Tick leads in the list to assign them to an executive or share them evenly.</div>
       )}
 
       <div className="panel">
@@ -141,11 +297,11 @@ export default function TeamLeads({ data, searchQuery, initialCaller, onReassign
             <thead>
               <tr>
                 <th><input type="checkbox" checked={allOnPage} onChange={togglePage} aria-label="Select all on this page" /></th>
-                <th>Lead</th><th>Telecaller</th><th>Product</th><th>Stage</th><th>Source</th><th>Last call</th><th>Last touched</th>
+                <th>Lead</th><th>Calling executive</th><th>Stage</th><th>Source</th><th>Last call</th><th>Last touched</th>
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <EmptyRow cols={8} text="No leads match these filters." />}
+              {rows.length === 0 && <EmptyRow cols={7} text="No leads match these filters." />}
               {rows.map(l => {
                 const last = lastCallFor(l.id, data.activities);
                 const owner = callerOf(l.assigned_to);
@@ -158,7 +314,6 @@ export default function TeamLeads({ data, searchQuery, initialCaller, onReassign
                       {owner?.name ?? '—'}
                       {owner && !owner.is_active && <div><span className="chip muted">Inactive</span></div>}
                     </td>
-                    <td>{verticalName(l.vertical_id)}</td>
                     <td><span className={`chip ${isWonLead(l) ? 'delivered' : stageOf(l.stage_id)?.name === 'Lost' ? 'muted' : 'confirmed'}`}>{stageName(l.stage_id)}</span></td>
                     <td>{l.source === 'Website' ? <span className="source-tag website">Website</span> : l.source}</td>
                     <td>{last ? <><StatusChip status={last.outcome} /><div className="loc">{ago(last.created_at)}</div></> : <span className="loc">Never</span>}</td>
