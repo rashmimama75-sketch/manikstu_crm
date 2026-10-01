@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import CallingExecutiveDashboard from '../../components/CallingExecutiveDashboard';
 import { requireRole } from '../../lib/auth';
-import { actorFor, loadTracker } from '../../lib/trackerStore';
-import { stateFor } from '../../lib/trackerOps';
+import { getInitialTracker } from '../../lib/initialTracker';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +11,6 @@ export const metadata: Metadata = {
 
 export default async function CallingExecutivePage() {
   const user = await requireRole('calling-executive');
-  const tracker = stateFor(loadTracker(), actorFor(user));
+  const tracker = await getInitialTracker(user);
   return <CallingExecutiveDashboard user={user} tracker={tracker} />;
 }

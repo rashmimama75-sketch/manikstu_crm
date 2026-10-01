@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authenticate } from '../../../../lib/users';
-import { createSessionToken, ROLE_HOME, SESSION_COOKIE, SESSION_MAX_AGE } from '../../../../lib/session';
+import { createSessionToken, ROLE_HOME, SESSION_COOKIE, SESSION_MAX_AGE, type Role, type SessionUser } from '../../../../lib/session';
+import { API_BASE, TOKEN_COOKIE, backendCall, backendError, usingBackend } from '../../../../lib/backend';
 
 export async function POST(request: Request) {
   let email = '';
@@ -17,6 +18,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
   }
 
+  const secure = process.env.NODE_ENV === 'production';
+  const cookieBase = { httpOnly: true, sameSite: 'lax' as const, secure, path: '/', maxAge: SESSION_MAX_AGE };
+
+  // --- Backend mode: authenticate against the Laravel API and keep its Sanctum token ---
+  if (usingBackend()) {
+    let apiRes: Response;
+    try {
+      apiRes = await backendCall('/auth/login', { method: 'POST', body: { login: email, password } });
+    } catch (err) {
+      console.error('Login failed reaching the backend:', API_BASE, err);
+      return NextResponse.json({ error: 'Could not reach the server. Please try again.' }, { status: 502 });
+    }
+    const data = await apiRes.json().catch(() => ({}));
+    if (!apiRes.ok) {
+      const status = apiRes.status === 403 ? 403 : 401;
+      return NextResponse.json({ error: backendError(data, 'Incorrect email or password') }, { status });
+    }
+
+    const user = data.user as SessionUser;
+    const apiToken = data.token as string;
+    if (!user || !apiToken || !Object.prototype.hasOwnProperty.call(ROLE_HOME, user.role)) {
+      return NextResponse.json({ error: 'This login cannot access the dashboards.' }, { status: 403 });
+    }
+
+    let sessionToken: string;
+    try {
+      sessionToken = await createSessionToken(user);
+    } catch (err) {
+      console.error('Login failed while creating the session token:', err);
+      return NextResponse.json({ error: 'Server is misconfigured (missing AUTH_SECRET). Contact an admin.' }, { status: 500 });
+    }
+
+    const res = NextResponse.json({ redirectTo: ROLE_HOME[user.role as Role], mustChangePassword: !!data.mustChangePassword });
+    res.cookies.set(SESSION_COOKIE, sessionToken, cookieBase);
+    res.cookies.set(TOKEN_COOKIE, apiToken, cookieBase);
+    return res;
+  }
+
+  // --- Local mode: the built-in demo user store ---
   const user = authenticate(email, password);
   if (!user) {
     return NextResponse.json({ error: 'Incorrect email or password' }, { status: 401 });
@@ -32,12 +72,6 @@ export async function POST(request: Request) {
   }
 
   const res = NextResponse.json({ redirectTo: ROLE_HOME[user.role] });
-  res.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: SESSION_MAX_AGE,
-  });
+  res.cookies.set(SESSION_COOKIE, token, cookieBase);
   return res;
 }
