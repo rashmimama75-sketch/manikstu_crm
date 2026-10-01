@@ -2104,13 +2104,20 @@ tr.row-new td:first-child { box-shadow: inset 3px 0 0 var(--leaf); }
 .score .num small.new-count { color: var(--leaf); font-weight: 700; }
 
 /* ---- Manager: Regional report ---------------------------------------------------------- */
-.region-picker { margin-bottom: 18px; }
-.region-steps { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
-.region-steps .form-group { display: flex; flex-direction: column; gap: 5px; margin: 0; flex: 1 1 180px; }
-.region-steps .form-group > span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--ink-soft); }
-.region-steps .filter-select { width: 100%; }
-.region-arrow { font-size: 20px; line-height: 1; color: var(--ink-soft); align-self: flex-end; padding-bottom: 12px; }
-.region-divider { align-self: stretch; width: 1px; margin: 0 6px; background: var(--line); }
+/* Region filter: a breadcrumb of pill dropdowns (location) with period/status pushed right */
+.region-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 20px; padding: 12px 14px; background: var(--card-bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+.region-crumb { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.region-crumb .region-pin { color: var(--leaf); flex-shrink: 0; }
+.region-sep { color: var(--ink-soft); opacity: 0.6; flex-shrink: 0; }
+.region-toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.pill-select { position: relative; display: inline-flex; }
+.pill-select::after { content: ''; position: absolute; right: 12px; top: 50%; width: 9px; height: 9px; margin-top: -3px; border-right: 1.6px solid var(--ink-soft); border-bottom: 1.6px solid var(--ink-soft); transform: rotate(45deg); pointer-events: none; }
+.pill-select select { appearance: none; -webkit-appearance: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--page-bg); border: 1px solid var(--line); border-radius: 22px; padding: 9px 32px 9px 16px; cursor: pointer; max-width: 230px; transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease; }
+.pill-select select:hover { border-color: var(--leaf); }
+.pill-select select:focus-visible { outline: none; border-color: var(--leaf); box-shadow: 0 0 0 3px rgba(42, 106, 48, 0.15); }
+.region-toolbar-right .pill-select select { background: var(--card-bg); font-weight: 500; }
+@media (max-width: 680px) { .region-toolbar-right { width: 100%; } .region-toolbar-right .pill-select { flex: 1 1 140px; } .region-toolbar-right .pill-select select { width: 100%; max-width: none; } }
 .region-bars .hbar-label.link-btn { background: none; border: none; padding: 0; font: inherit; text-align: left; color: inherit; cursor: pointer; }
 .region-bars .hbar-label.link-btn:hover { color: var(--leaf); text-decoration: underline; }
 .region-bars .hbar-row.selected .hbar-fill { background: var(--gold); }
@@ -2247,6 +2254,15 @@ tr.row-new td:first-child { box-shadow: inset 3px 0 0 var(--leaf); }
 .seller-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
 @media (max-width: 1150px) { .seller-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 680px) { .seller-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Regional report: six KPI tiles — content centred so they read like dashboard cards */
+.region-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
+.region-kpis .stat-tile { min-height: 92px; justify-content: center; padding: 16px 18px; }
+.region-kpis .stat-tile .num { font-size: 24px; }
+.region-kpis .stat-tile .label { margin-top: 4px; }
+.region-kpis.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1250px) { .region-kpis, .region-kpis.four { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .region-kpis, .region-kpis.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 .dash-grid .stack > .panel { flex: 1; }
 .dash-grid .wide-at-2 .mini-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }

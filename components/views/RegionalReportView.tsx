@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { ChevronRight, IndianRupee, MapPin, PackageCheck, Receipt, Users } from 'lucide-react';
 import { TODAY, OrderSource, SalesOrder } from '../../data/managerDashboard';
 import { MONTH, daysBefore, pct, rupees, rupeesShort, shortDate } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
@@ -112,11 +113,11 @@ export default function RegionalReportView({ orders, onToast }: Props) {
 
   return (
     <>
-      <div className="panel region-picker">
-        <div className="region-steps">
-          <label className="form-group">
-            <span>State</span>
-            <select className="filter-select" value={state} onChange={e => { setState(e.target.value); setDistrict('all'); reset(); }}>
+      <div className="region-toolbar">
+        <div className="region-crumb">
+          <MapPin size={16} className="region-pin" aria-hidden />
+          <div className="pill-select">
+            <select value={state} onChange={e => { setState(e.target.value); setDistrict('all'); reset(); }} aria-label="State">
               <optgroup label="States">
                 {INDIA_STATES.map(s => <option key={s} value={s}>{s}{stateCounts.get(s) ? ` (${stateCounts.get(s)})` : ''}</option>)}
               </optgroup>
@@ -125,38 +126,84 @@ export default function RegionalReportView({ orders, onToast }: Props) {
               </optgroup>
               {unknownCount > 0 && <option value="Unknown">Unknown state ({unknownCount})</option>}
             </select>
-          </label>
-          <span className="region-arrow" aria-hidden>›</span>
-          <label className="form-group">
-            <span>{state === 'Odisha' ? 'District' : 'District / town'}</span>
-            <select className="filter-select" value={district} onChange={e => { setDistrict(e.target.value); reset(); }}>
+          </div>
+          <ChevronRight size={15} className="region-sep" aria-hidden />
+          <div className="pill-select">
+            <select value={district} onChange={e => { setDistrict(e.target.value); reset(); }} aria-label={state === 'Odisha' ? 'District' : 'District / town'}>
               <option value="all">All districts ({base.length})</option>
               {districtCounts.map(([d, n]) => <option key={d} value={d}>{d} ({n})</option>)}
             </select>
-          </label>
-          <span className="region-divider" aria-hidden />
-          <label className="form-group">
-            <span>Period</span>
-            <select className="filter-select" value={period} onChange={e => { setPeriod(e.target.value as Period); reset(); }}>
+          </div>
+        </div>
+        <div className="region-toolbar-right">
+          <div className="pill-select">
+            <select value={period} onChange={e => { setPeriod(e.target.value as Period); reset(); }} aria-label="Period">
               {(Object.keys(PERIOD_LABEL) as Period[]).map(p => <option key={p} value={p}>{PERIOD_LABEL[p]}</option>)}
             </select>
-          </label>
-          <label className="form-group">
-            <span>Source</span>
-            <select className="filter-select" value={source} onChange={e => { setSource(e.target.value as OrderSource | 'all'); reset(); }}>
+          </div>
+          <div className="pill-select">
+            <select value={source} onChange={e => { setSource(e.target.value as OrderSource | 'all'); reset(); }} aria-label="Source">
               <option value="all">Website + telecalling</option>
               <option value="website">Website</option>
               <option value="telecaller">Telecalling</option>
             </select>
-          </label>
+          </div>
         </div>
       </div>
 
-      <div className="scoreboard">
-        <div className="score"><div className="num">{farmers}</div><div className="label">Farmers / customers</div></div>
-        <div className="score"><div className="num">{rupeesShort(revenue)}</div><div className="label">Revenue</div></div>
-        <div className="score"><div className="num">{live.length ? rupees(Math.round(revenue / live.length)) : '—'}</div><div className="label">Average order</div></div>
-        <div className="score"><div className="num">{live.length ? `${pct(delivered, live.length)}%` : '—'}</div><div className="label">Delivered</div></div>
+      <div className="region-kpis four">
+        <div className="stat-tile accent">
+          <IndianRupee className="stat-icon" size={20} />
+          <div className="num">{rupeesShort(revenue)}</div>
+          <div className="label">Revenue</div>
+        </div>
+        <div className="stat-tile">
+          <Users className="stat-icon" size={20} />
+          <div className="num">{farmers}</div>
+          <div className="label">Farmers / customers</div>
+        </div>
+        <div className="stat-tile">
+          <Receipt className="stat-icon" size={20} />
+          <div className="num">{live.length ? rupees(Math.round(revenue / live.length)) : '—'}</div>
+          <div className="label">Average order</div>
+        </div>
+        <div className="stat-tile">
+          <PackageCheck className="stat-icon" size={20} />
+          <div className="num">{live.length ? `${pct(delivered, live.length)}%` : '—'}</div>
+          <div className="label">Delivered</div>
+        </div>
+      </div>
+
+      <div className="grid equal-2">
+        <div className="panel">
+          <div className="panel-head"><h2>Revenue by district</h2><span className="panel-meta">{state} · click a bar to filter</span></div>
+          {byDistrict.length === 0 ? <div className="loc">No orders from {state}{period === 'all' ? '' : ` in ${PERIOD_LABEL[period].toLowerCase()}`}.</div> : (
+            <div className="col-chart">
+              {byDistrict.map(([d, amt], i) => (
+                <button
+                  key={d}
+                  className={`col ${district === d ? 'selected' : ''}`}
+                  data-tip={`${d}: ${rupees(amt)}`}
+                  aria-label={`${d}: ${rupees(amt)}`}
+                  onClick={() => { setDistrict(district === d ? 'all' : d); reset(); }}
+                >
+                  <span className="col-plot">
+                    <span className="col-bar" style={{ height: `${Math.max(1, (amt / byDistrict[0][1]) * 100)}%` }}>
+                      {(i === 0 || district === d) && <span className="col-value">{rupeesShort(amt)}</span>}
+                    </span>
+                  </span>
+                  <span className="col-label">{d}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="panel">
+          <div className="panel-head"><h2>Product share</h2><span className="panel-meta">{district === 'all' ? state : district}</span></div>
+          {byProduct.length === 0 ? <div className="loc">No sales in this area.</div> : (
+            <PieChart slices={byProduct} label={`Share of sales by product in ${district === 'all' ? state : district}`} />
+          )}
+        </div>
       </div>
 
       <div className="panel" style={{ marginBottom: 20 }}>
@@ -198,38 +245,6 @@ export default function RegionalReportView({ orders, onToast }: Props) {
               <button className="btn-secondary btn-small" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>Previous</button>
               <button className="btn-secondary btn-small" disabled={safePage >= pages - 1} onClick={() => setPage(safePage + 1)}>Next</button>
             </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid equal-2">
-        <div className="panel">
-          <div className="panel-head"><h2>Revenue by district</h2><span className="panel-meta">{state} · click a bar to filter</span></div>
-          {byDistrict.length === 0 ? <div className="loc">No orders from {state}{period === 'all' ? '' : ` in ${PERIOD_LABEL[period].toLowerCase()}`}.</div> : (
-            <div className="col-chart">
-              {byDistrict.map(([d, amt], i) => (
-                <button
-                  key={d}
-                  className={`col ${district === d ? 'selected' : ''}`}
-                  data-tip={`${d}: ${rupees(amt)}`}
-                  aria-label={`${d}: ${rupees(amt)}`}
-                  onClick={() => { setDistrict(district === d ? 'all' : d); reset(); }}
-                >
-                  <span className="col-plot">
-                    <span className="col-bar" style={{ height: `${Math.max(1, (amt / byDistrict[0][1]) * 100)}%` }}>
-                      {(i === 0 || district === d) && <span className="col-value">{rupeesShort(amt)}</span>}
-                    </span>
-                  </span>
-                  <span className="col-label">{d}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="panel">
-          <div className="panel-head"><h2>Product share</h2><span className="panel-meta">{district === 'all' ? state : district}</span></div>
-          {byProduct.length === 0 ? <div className="loc">No sales in this area.</div> : (
-            <PieChart slices={byProduct} label={`Share of sales by product in ${district === 'all' ? state : district}`} />
           )}
         </div>
       </div>
