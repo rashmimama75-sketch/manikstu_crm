@@ -21,12 +21,12 @@ interface SidebarProps {
   onSelectPage: (pageKey: string) => void;
 }
 
-/** Green sidebar shared by every dashboard: logo, then grouped pages with icons and counts. */
+/** Cream sidebar shared by every dashboard: logo, then grouped pages with icons and counts. */
 export default function Sidebar({ groups, activePage, onSelectPage }: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <img className="brand-logo" src="/brand/manikstu-logo-horizontal-negative.png" alt="Manikstu" />
+        <img className="brand-logo" src="/brand/manikstu-logo-horizontal.png" alt="Manikstu" />
       </div>
 
       <nav className="sidebar-nav">

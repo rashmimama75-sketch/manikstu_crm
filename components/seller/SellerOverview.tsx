@@ -1,4 +1,5 @@
 import React from 'react';
+import { IndianRupee, Package, ShoppingCart, Truck, Wallet } from 'lucide-react';
 import type { CatalogProduct } from '../../data/catalogProducts';
 import { LOW_STOCK_LEVEL } from '../../data/stockLevels';
 import { TODAY } from '../../data/today';
@@ -32,6 +33,10 @@ export default function SellerOverview({ orders, products, onNavigate, shipmentD
     return { key, gross: rows.reduce((s, o) => s + o.gross, 0), count: rows.length };
   });
   const maxDay = Math.max(1, ...days.map(d => d.gross));
+  const total30 = days.reduce((s, d) => s + d.gross, 0);
+  const avg30 = Math.round(total30 / 30);
+  const bestDay = days.reduce((a, b) => (b.gross > a.gross ? b : a), days[0]);
+  const today = days.find(d => d.key === TODAY) ?? { gross: 0, count: 0 };
 
   const byProduct = products
     .map(p => {
@@ -45,16 +50,47 @@ export default function SellerOverview({ orders, products, onNavigate, shipmentD
 
   return (
     <>
-      <div className="scoreboard">
-        <div className="score"><div className="num">{rupeesShort(monthGross)}</div><div className="label">Sales · this month</div></div>
-        <div className="score"><div className="num">{month.length}</div><div className="label">Orders · this month</div></div>
-        <div className="score"><div className="num">{monthUnits}</div><div className="label">Units sold · this month</div></div>
-        <div className="score"><div className="num">{toShip.length}{toShip.length > 0 && <small className="warn">need action</small>}</div><div className="label">Orders to confirm or ship</div></div>
-        <div className="score"><div className="num">{rupeesShort(due)}</div><div className="label">Payout due · {shortDate(nextPayoutDate())}</div></div>
+      <div className="seller-kpis">
+        <div className="stat-tile accent">
+          <IndianRupee className="stat-icon" size={22} />
+          <div className="num">{rupeesShort(monthGross)}</div>
+          {today.gross > 0 && <small>+{rupeesShort(today.gross)} today</small>}
+          <div className="label">Sales · this month</div>
+        </div>
+        <div className="stat-tile">
+          <ShoppingCart className="stat-icon" size={22} />
+          <div className="num">{month.length}</div>
+          <div className="label">Orders · this month</div>
+        </div>
+        <div className="stat-tile">
+          <Package className="stat-icon" size={22} />
+          <div className="num">{monthUnits}</div>
+          <div className="label">Units sold · this month</div>
+        </div>
+        <div className="stat-tile">
+          <Truck className="stat-icon" size={22} />
+          <div className="num">{toShip.length}</div>
+          {toShip.length > 0 && <small className="warn">need action</small>}
+          <div className="label">Orders to confirm or ship</div>
+        </div>
+        <div className="stat-tile">
+          <Wallet className="stat-icon" size={22} />
+          <div className="num">{rupeesShort(due)}</div>
+          <small>due {shortDate(nextPayoutDate())}</small>
+          <div className="label">Payout due</div>
+        </div>
       </div>
 
       <div className="panel" style={{ marginBottom: 20 }}>
-        <div className="panel-head"><h2>My sales · last 30 days</h2><span className="panel-meta">Before commission</span></div>
+        <div className="panel-head">
+          <h2>My sales · last 30 days</h2>
+          <span className="panel-meta">{rupees(total30)} total · before commission</span>
+        </div>
+        <div className="trend-facts">
+          <div><span className="k"><i className="swatch" />Daily average</span><span className="v">{rupees(avg30)}</span></div>
+          <div><span className="k">Best day</span><span className="v">{rupees(bestDay.gross)} <small>on {shortDate(bestDay.key)}</small></span></div>
+          <div><span className="k"><i className="swatch now" />Today so far</span><span className="v">{rupees(today.gross)} <small>{today.count} {today.count === 1 ? 'order' : 'orders'}</small></span></div>
+        </div>
         <div className="bar-chart dense" role="img" aria-label="Daily sales for the last 30 days">
           {days.map((d, i) => (
             <div key={d.key} className="bc-col" data-tip={`${shortDate(d.key)} · ${rupees(d.gross)} · ${d.count} orders`}>
