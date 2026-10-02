@@ -177,3 +177,12 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   { id: 'TX-903', type: 'Refund', party: 'Manoj Mallick', amount: 640, status: 'Processing', date: 'Yesterday' },
   { id: 'TX-904', type: 'FPO settlement', party: 'Ganjam Agri Producer Co.', amount: 110000, status: 'Settled', date: '22 Sep' }
 ];
+
+// Demo data disabled: the CRM starts empty (see data/managerDashboard.ts). Remove to restore.
+INITIAL_ORDERS.length = 0;
+INITIAL_LEADS.length = 0;
+INITIAL_ENQUIRIES.length = 0;
+INITIAL_CUSTOMERS.length = 0;
+INITIAL_FRANCHISES.length = 0;
+INITIAL_FPOS.length = 0;
+INITIAL_TRANSACTIONS.length = 0;

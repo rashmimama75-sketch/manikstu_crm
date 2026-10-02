@@ -22,7 +22,7 @@ export default function LoginForm({ showDemoAccounts }: { showDemoAccounts: bool
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ login: email, password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -42,13 +42,13 @@ export default function LoginForm({ showDemoAccounts }: { showDemoAccounts: bool
     <>
       <form onSubmit={handleSubmit} className="login-form">
         <div className="form-group">
-          <label htmlFor="email">Email</label>
+          <label htmlFor="email">Email or Staff ID</label>
           <input
             id="email"
-            type="email"
+            type="text"
             autoComplete="username"
             required
-            placeholder="name@manikstu.in"
+            placeholder="name@manikstu.in, MK-TC-120 or mobile"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />

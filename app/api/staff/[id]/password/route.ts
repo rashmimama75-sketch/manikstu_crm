@@ -1,22 +1,23 @@
 import { NextResponse } from 'next/server';
-import { apiUser } from '../../../../../lib/auth';
-import { passwordProblem } from '../../../../../lib/passwords';
-import { resetPassword } from '../../../../../lib/staffAccounts';
+import { cookies } from 'next/headers';
+import { API_TOKEN_COOKIE, backendFetch } from '../../../../../lib/backend';
 
-// The head sets a new temporary password. It's stored hashed and never sent back.
+// The head sets a new temporary password. Forwards to the backend.
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  if (!(await apiUser('telecaller'))) return NextResponse.json({ error: 'Not allowed' }, { status: 403 });
+  const token = cookies().get(API_TOKEN_COOKIE)?.value;
+  if (!token) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
 
-  let password = '';
+  let body: unknown;
   try {
-    password = String((await request.json()).password ?? '');
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
-  const problem = passwordProblem(password);
-  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
-
-  const account = resetPassword(params.id, password);
-  if (!account) return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
-  return NextResponse.json({ data: account });
+  try {
+    const res = await backendFetch(`/telecalling/staff/${params.id}/password`, { method: 'POST', body, token });
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  } catch {
+    return NextResponse.json({ error: 'Could not reach the server. Please try again.' }, { status: 502 });
+  }
 }

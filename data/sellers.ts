@@ -4,8 +4,8 @@
 
 export interface Seller {
   id: number;
-  /** Login that belongs to this seller (lib/users.ts). */
-  userId: string;
+  /** Staff ID of the login that belongs to this seller (matches the backend user). */
+  staffId: string;
   business: string;
   owner: string;
   city: string;
@@ -20,7 +20,7 @@ export interface Seller {
 export const SELLERS: Seller[] = [
   {
     id: 1,
-    userId: 'u-sl-301',
+    staffId: 'MK-SL-301',
     business: 'Odisha Herbal Vet Labs',
     owner: 'Sanjay Rath',
     city: 'Bhubaneswar',
@@ -31,7 +31,7 @@ export const SELLERS: Seller[] = [
   },
   {
     id: 2,
-    userId: 'u-sl-302',
+    staffId: 'MK-SL-302',
     business: 'Kalinga Mineral Blocks',
     owner: 'Lipsa Mohanty',
     city: 'Cuttack',
@@ -42,4 +42,4 @@ export const SELLERS: Seller[] = [
   },
 ];
 
-export const sellerForUser = (userId: string) => SELLERS.find(s => s.userId === userId);
+export const sellerForStaffId = (staffId: string) => SELLERS.find(s => s.staffId === staffId);

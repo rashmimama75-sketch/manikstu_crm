@@ -78,3 +78,6 @@ function buildStock(): StockRow[] {
 }
 
 export const INITIAL_STOCK: StockRow[] = buildStock();
+
+// Demo data disabled: start with no stock levels (see data/managerDashboard.ts). Remove to restore.
+INITIAL_STOCK.length = 0;

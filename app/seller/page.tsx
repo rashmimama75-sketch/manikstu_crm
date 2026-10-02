@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import SellerDashboard from '../../components/SellerDashboard';
 import { requireRole } from '../../lib/auth';
-import { Seller, sellerForUser } from '../../data/sellers';
+import { Seller, sellerForStaffId } from '../../data/sellers';
 import { CATALOG_PRODUCTS } from '../../data/catalogProducts';
 import { SALES_ORDERS, SalesOrder } from '../../data/managerDashboard';
 
@@ -30,7 +30,7 @@ function sellerSlice(seller: Seller) {
 
 export default async function SellerPage() {
   const user = await requireRole('seller');
-  const seller = sellerForUser(user.id);
+  const seller = sellerForStaffId(user.staffId);
   if (!seller) {
     return (
       <main className="login-main">

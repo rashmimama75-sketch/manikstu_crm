@@ -632,3 +632,15 @@ const generatedEnquiries: WebEnquiry[] = Array.from({ length: 26 }, (_, i) => {
 export const WEB_ENQUIRIES: WebEnquiry[] = [...namedEnquiries, ...generatedEnquiries].sort((a, b) =>
   b.created_at.localeCompare(a.created_at),
 );
+
+// ---- Demo data disabled ------------------------------------------------------
+// The CRM starts with no demo leads / calls / sales / orders / enquiries; real
+// data accumulates as staff use it (and the backend is the live source). Reference
+// data above (verticals, stages, telecallers, products) is kept. To restore the
+// demo dataset, remove this block.
+TRACKER_LEADS.length = 0;
+LEAD_ACTIVITIES.length = 0;
+FOLLOWUPS.length = 0;
+TRACKER_SALES.length = 0;
+SALES_ORDERS.length = 0;
+WEB_ENQUIRIES.length = 0;

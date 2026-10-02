@@ -4,11 +4,6 @@ import { API_TOKEN_COOKIE, backendFetch } from '../../../lib/backend';
 
 export const dynamic = 'force-dynamic';
 
-// Shared telecalling data. Forwards to the CRM backend, attaching the Sanctum
-// token from the httpOnly cookie. The client contract is unchanged:
-//   GET  ?since=<version> -> { version, unchanged } or { state }
-//   POST { action }       -> { state, message, createdIds } or { error }
-
 function apiToken(): string | undefined {
   return cookies().get(API_TOKEN_COOKIE)?.value;
 }
@@ -16,11 +11,9 @@ function apiToken(): string | undefined {
 export async function GET(request: Request) {
   const token = apiToken();
   if (!token) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
-
-  const since = new URL(request.url).searchParams.get('since');
-  const qs = since !== null && since !== '' ? `?since=${encodeURIComponent(since)}` : '';
+  const q = new URL(request.url).searchParams.get('q');
   try {
-    const res = await backendFetch(`/tracker${qs}`, { token });
+    const res = await backendFetch(`/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`, { token });
     const data = await res.json().catch(() => ({}));
     return NextResponse.json(data, { status: res.status });
   } catch {
@@ -31,7 +24,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const token = apiToken();
   if (!token) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
-
   let body: unknown;
   try {
     body = await request.json();
@@ -39,7 +31,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
   try {
-    const res = await backendFetch('/tracker', { method: 'POST', body, token });
+    const res = await backendFetch('/customers', { method: 'POST', body, token });
     const data = await res.json().catch(() => ({}));
     return NextResponse.json(data, { status: res.status });
   } catch {
