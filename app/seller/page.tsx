@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
 import SellerDashboard from '../../components/SellerDashboard';
 import { requireRole } from '../../lib/auth';
+import { fetchSellerOrders } from '../../lib/sellerOrders';
 import { Seller, sellerForUser } from '../../data/sellers';
 import { CATALOG_PRODUCTS } from '../../data/catalogProducts';
 import { SALES_ORDERS, SalesOrder } from '../../data/managerDashboard';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Manikstu Seller Dashboard',
@@ -30,7 +33,7 @@ function sellerSlice(seller: Seller) {
 
 export default async function SellerPage() {
   const user = await requireRole('seller');
-  const seller = sellerForUser(user.id);
+  const seller = sellerForUser(user);
   if (!seller) {
     return (
       <main className="login-main">
@@ -41,6 +44,10 @@ export default async function SellerPage() {
       </main>
     );
   }
-  const { products, orders, mixedOrderIds } = sellerSlice(seller);
-  return <SellerDashboard user={user} seller={seller} initialOrders={orders} initialProducts={products} mixedOrderIds={mixedOrderIds} />;
+  const local = sellerSlice(seller);
+  // Live orders from the CRM backend (incl. website orders) when wired; else sample data.
+  const backend = await fetchSellerOrders();
+  const orders = backend?.orders ?? local.orders;
+  const mixedOrderIds = backend?.mixedOrderIds ?? local.mixedOrderIds;
+  return <SellerDashboard user={user} seller={seller} initialOrders={orders} initialProducts={local.products} mixedOrderIds={mixedOrderIds} />;
 }

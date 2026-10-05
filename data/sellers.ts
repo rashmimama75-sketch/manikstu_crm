@@ -6,6 +6,8 @@ export interface Seller {
   id: number;
   /** Login that belongs to this seller (lib/users.ts). */
   userId: string;
+  staffId?: string;
+  dbUserId?: string;
   business: string;
   owner: string;
   city: string;
@@ -21,6 +23,8 @@ export const SELLERS: Seller[] = [
   {
     id: 1,
     userId: 'u-sl-301',
+    staffId: 'MK-SL-301',
+    dbUserId: '3',
     business: 'Odisha Herbal Vet Labs',
     owner: 'Sanjay Rath',
     city: 'Bhubaneswar',
@@ -32,6 +36,7 @@ export const SELLERS: Seller[] = [
   {
     id: 2,
     userId: 'u-sl-302',
+    staffId: 'MK-SL-302',
     business: 'Kalinga Mineral Blocks',
     owner: 'Lipsa Mohanty',
     city: 'Cuttack',
@@ -42,4 +47,20 @@ export const SELLERS: Seller[] = [
   },
 ];
 
-export const sellerForUser = (userId: string) => SELLERS.find(s => s.userId === userId);
+export const sellerForUser = (
+  userIdOrUser: string | { id?: string; staffId?: string; name?: string },
+  staffId?: string,
+  name?: string
+) => {
+  const uid = typeof userIdOrUser === 'string' ? userIdOrUser : userIdOrUser?.id;
+  const sid = (typeof userIdOrUser === 'object' ? userIdOrUser?.staffId : staffId) ?? '';
+  const uName = (typeof userIdOrUser === 'object' ? userIdOrUser?.name : name) ?? '';
+
+  return SELLERS.find(s =>
+    (uid && (s.userId === uid || s.staffId === uid || s.dbUserId === uid)) ||
+    (sid && (s.staffId === sid || s.userId === sid || (sid.includes('301') && s.id === 1) || (sid.includes('302') && s.id === 2))) ||
+    (uName && s.owner.toLowerCase() === uName.toLowerCase()) ||
+    (uid === '3' && s.id === 1)
+  );
+};
+
