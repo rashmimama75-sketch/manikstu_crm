@@ -183,15 +183,39 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     setRestockUnits(String(suggested > 0 ? suggested : 10));
     setRestockNote('');
   };
-  const saveRestock = (e: React.FormEvent) => {
+  const saveRestock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!restocking) return;
+    const target = restocking;
+    const note = restockNote.trim();
     const units = Math.round(Number(restockUnits));
     if (!(units > 0)) return;
-    setCatalog(prev => prev.map(p => (p.id === restocking.id ? { ...p, stock_quantity: p.stock_quantity + units } : p)));
-    setMovements(prev => [...prev, { id: prev.length + 1, productId: restocking.id, units, note: restockNote.trim(), at: nowStamp() }]);
+    // Optimistic: show the new total straight away, then persist to the backend.
+    setCatalog(prev => prev.map(p => (p.id === target.id ? { ...p, stock_quantity: p.stock_quantity + units } : p)));
+    setMovements(prev => [...prev, { id: prev.length + 1, productId: target.id, units, note, at: nowStamp() }]);
     setRestocking(null);
-    showToast(`${restocking.name}: +${units} units added to stock`);
+    showToast(`${target.name}: +${units} units added to stock`);
+    try {
+      const res = await fetch(`/api/seller/products/${target.id}/restock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ units, note }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Roll the optimistic add back and tell the seller it didn't save.
+        setCatalog(prev => prev.map(p => (p.id === target.id ? { ...p, stock_quantity: Math.max(0, p.stock_quantity - units) } : p)));
+        showToast(data.error || 'Could not save the restock. Please try again.');
+        return;
+      }
+      // Trust the backend's authoritative total when it sends one.
+      if (typeof data.product?.stock_quantity === 'number') {
+        setCatalog(prev => prev.map(p => (p.id === target.id ? { ...p, stock_quantity: data.product.stock_quantity } : p)));
+      }
+    } catch {
+      setCatalog(prev => prev.map(p => (p.id === target.id ? { ...p, stock_quantity: Math.max(0, p.stock_quantity - units) } : p)));
+      showToast('Could not reach the server. Please try again.');
+    }
   };
 
   // Add product (Stock page): create a full listing, laid out like the website admin panel.
@@ -245,7 +269,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name, slug: add.slug.trim() || null, category: add.category, size: add.size.trim() || null, sku: add.sku.trim() || null,
-          price, is_active: add.active, is_featured: add.featured, display_order: Math.round(Number(add.order) || 0),
+          price, stock_quantity: stock, is_active: add.active, is_featured: add.featured, display_order: Math.round(Number(add.order) || 0),
           description: add.description.trim() || null, long_description: add.longDescription.trim() || null,
           highlights, recommended_for: recommendedFor, specifications,
           usage_instructions: add.usage.trim() || null, storage_instructions: add.storage.trim() || null, ingredients: add.ingredients.trim() || null,
