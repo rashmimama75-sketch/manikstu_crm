@@ -18,7 +18,7 @@ type View = 'orders' | 'customers';
 const PAGE_SIZE = 15;
 
 const itemsText = (o: SellerOrder) => o.items.map(i => `${i.product_name} × ${i.quantity}`).join(', ');
-const village = (o: SellerOrder) => o.order.address.split(',').slice(1).join(',').trim() || o.order.address;
+const village = (o: SellerOrder) => { const a = o.order.address ?? ''; return a.split(',').slice(1).join(',').trim() || a; };
 
 interface Props {
   seller: Seller;

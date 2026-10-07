@@ -113,7 +113,7 @@ export default function SellerOverview({ orders, products, onNavigate, shipmentD
         <div className="panel">
           <div className="panel-head">
             <h2>Low stock</h2>
-            <button className="link link-btn" onClick={() => onNavigate('products')}>My products</button>
+            <button className="link link-btn" onClick={() => onNavigate('stock')}>View stock</button>
           </div>
           {lowStock.length === 0 ? (
             <div className="loc">All active products have more than {LOW_STOCK_LEVEL} units.</div>

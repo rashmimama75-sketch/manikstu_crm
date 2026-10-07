@@ -50,11 +50,11 @@ const longestPrefix = (pin: string, table: [string, string][]) =>
   table.filter(([p]) => pin.startsWith(p)).sort((a, b) => b[0].length - a[0].length)[0]?.[1];
 
 /** State or UT for an address: the stored state if it's a known name, otherwise from the PIN code. */
-export function stateFor(state: string, pincode: string): string {
-  const t = state.trim().toLowerCase();
+export function stateFor(state: string | null | undefined, pincode: string | null | undefined): string {
+  const t = (state ?? '').trim().toLowerCase();
   const known = [...INDIA_STATES, ...INDIA_UTS].find(s => s.toLowerCase() === t) ?? ALIASES[t];
   if (known) return known;
-  const pin = pincode.replace(/\D/g, '');
+  const pin = (pincode ?? '').replace(/\D/g, '');
   return (pin.length === 6 && longestPrefix(pin, STATE_BY_PIN)) || 'Unknown';
 }
 
@@ -94,10 +94,10 @@ const titleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, c => c.toUpper
  * District for an address. Odisha: from the PIN code, or the town name. Other states: the town, until
  * the backend stores the district.
  */
-export function districtFor(state: string, pincode: string, city: string): string {
-  const town = city.trim();
+export function districtFor(state: string | null | undefined, pincode: string | null | undefined, city: string | null | undefined): string {
+  const town = (city ?? '').trim();
   if (stateFor(state, pincode) === 'Odisha') {
-    const pin = pincode.replace(/\D/g, '');
+    const pin = (pincode ?? '').replace(/\D/g, '');
     return longestPrefix(pin, ODISHA_BY_PIN) ?? ODISHA_BY_TOWN[town.toLowerCase()] ?? (town ? titleCase(town) : 'Unknown');
   }
   return town ? titleCase(town) : 'Unknown';

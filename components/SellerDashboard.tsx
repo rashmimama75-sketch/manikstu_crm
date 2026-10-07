@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { BarChart3, Boxes, LayoutDashboard, MapPin, Package, ShoppingCart, Truck, Wallet } from 'lucide-react';
+import { BarChart3, Boxes, LayoutDashboard, MapPin, ShoppingCart, Truck, Wallet } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
 import Modal from './Modal';
+import NotificationsDrawer from './NotificationsDrawer';
+import { LOW_STOCK_LEVEL } from '../data/stockLevels';
 import SellerOverview from './seller/SellerOverview';
 import SellerOrders from './seller/SellerOrders';
-import SellerProducts from './seller/SellerProducts';
 import SellerStock, { StockMovement } from './seller/SellerStock';
 import SellerTracking from './seller/SellerTracking';
 import SellerRegional from './seller/SellerRegional';
@@ -42,6 +43,26 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
 
   const myProducts = useMemo(() => catalog.filter(p => seller.productIds.includes(p.id)), [catalog, seller]);
   const myOrders = useMemo(() => sellerOrders(orders, seller, catalog), [orders, seller, catalog]);
+
+  // Notifications: things that need the seller's attention, newest concern first.
+  const [isNotifsOpen, setIsNotifsOpen] = useState(false);
+  const [dismissedNotifs, setDismissedNotifs] = useState<string[]>([]);
+  const notifications = useMemo(() => {
+    const list: { id: string; title: string; message: string; time: string; type: 'warning' | 'success' | 'info' }[] = [];
+    const toConfirm = myOrders.filter(o => o.order.status === 'pending');
+    const toShip = myOrders.filter(o => o.order.status === 'confirmed');
+    const outOfStock = myProducts.filter(p => p.is_active && p.stock_quantity === 0);
+    const lowStock = myProducts.filter(p => p.is_active && p.stock_quantity > 0 && p.stock_quantity <= LOW_STOCK_LEVEL);
+    const dueAmount = myOrders.filter(o => o.payout === 'Due').reduce((s, o) => s + o.net, 0);
+
+    if (toConfirm.length) list.push({ id: 'confirm', type: 'warning', title: `${toConfirm.length} order${toConfirm.length > 1 ? 's' : ''} to confirm`, message: 'New website orders are waiting for you to confirm them.', time: 'Now' });
+    if (toShip.length) list.push({ id: 'ship', type: 'info', title: `${toShip.length} order${toShip.length > 1 ? 's' : ''} to pack & ship`, message: 'Confirmed orders are ready to be packed and dispatched.', time: 'Now' });
+    if (outOfStock.length) list.push({ id: 'oos', type: 'warning', title: `${outOfStock.length} product${outOfStock.length > 1 ? 's' : ''} out of stock`, message: `${outOfStock.map(p => p.name).slice(0, 3).join(', ')}${outOfStock.length > 3 ? '…' : ''} — restock to keep selling.`, time: 'Today' });
+    if (lowStock.length) list.push({ id: 'low', type: 'info', title: `${lowStock.length} product${lowStock.length > 1 ? 's' : ''} low on stock`, message: `Running low: ${lowStock.map(p => p.name).slice(0, 3).join(', ')}${lowStock.length > 3 ? '…' : ''}.`, time: 'Today' });
+    if (dueAmount > 0) list.push({ id: 'payout', type: 'success', title: 'Payout due', message: `₹${dueAmount.toLocaleString('en-IN')} from delivered orders is due for payout.`, time: 'This week' });
+
+    return list.filter(n => !dismissedNotifs.includes(n.id));
+  }, [myOrders, myProducts, dismissedNotifs]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -119,27 +140,6 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     window.scrollTo(0, 0);
   };
 
-  // Edit product
-  const [editing, setEditing] = useState<CatalogProduct | null>(null);
-  const [editPrice, setEditPrice] = useState('');
-  const [editStock, setEditStock] = useState('');
-  const [editActive, setEditActive] = useState(true);
-  const openEdit = (p: CatalogProduct) => {
-    setEditing(p);
-    setEditPrice(p.price === null ? '' : String(p.price));
-    setEditStock(String(p.stock_quantity));
-    setEditActive(p.is_active);
-  };
-  const saveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editing) return;
-    const price = editPrice.trim() === '' ? null : Math.max(0, Math.round(Number(editPrice)));
-    const stock = Math.max(0, Math.round(Number(editStock) || 0));
-    setCatalog(prev => prev.map(p => (p.id === editing.id ? { ...p, price, stock_quantity: stock, is_active: editActive } : p)));
-    setEditing(null);
-    showToast(`${editing.name} updated`);
-  };
-
   // Restock (Stock page): adds units and records the movement
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [restocking, setRestocking] = useState<CatalogProduct | null>(null);
@@ -174,7 +174,6 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
   const pageMeta: Record<string, { title: string; sub: string }> = {
     overview: { title: 'Seller Dashboard', sub: `Your sales on Manikstu, ${user.name.split(' ')[0]}: orders to ship, stock and earnings.` },
     orders:   { title: 'Orders',           sub: 'New orders waiting to be confirmed. Once confirmed, follow them in Tracking.' },
-    products: { title: 'My Products',      sub: 'Your listings on the Manikstu website: price, stock and whether they are shown.' },
     stock:    { title: 'Stock',            sub: 'What you have, what is promised to customers, how long it lasts and what to restock.' },
     tracking: { title: 'Tracking',         sub: 'Where each of your orders is: courier, tracking number, expected delivery and history.' },
     regional: { title: 'Regional Report',  sub: 'Where your products sell: orders and customers by state, district, town and PIN code.' },
@@ -189,7 +188,6 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
       label: 'Sell',
       items: [
         { key: 'orders', label: 'Orders', icon: ShoppingCart, count: toConfirm },
-        { key: 'products', label: 'My products', icon: Package, count: lowStock },
         { key: 'stock', label: 'Stock', icon: Boxes },
         { key: 'tracking', label: 'Tracking', icon: Truck, count: lateShipments + toShip },
         { key: 'regional', label: 'Regional report', icon: MapPin },
@@ -221,13 +219,14 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
           <Topbar
             title={currentMeta.title}
             subtitle={currentMeta.sub}
-            search={activePage === 'orders' || activePage === 'products' || activePage === 'stock' || activePage === 'tracking'
+            search={activePage === 'orders' || activePage === 'stock' || activePage === 'tracking'
               ? {
                   query: searchQuery,
                   onChange: setSearchQuery,
-                  placeholder: activePage === 'products' || activePage === 'stock' ? 'Search products…' : activePage === 'tracking' ? 'Search order, customer, city, AWB…' : 'Search order, customer, city, product…',
+                  placeholder: activePage === 'stock' ? 'Search products…' : activePage === 'tracking' ? 'Search order, customer, city, AWB…' : 'Search order, customer, city, product…',
                 }
               : undefined}
+            notifications={{ count: notifications.length, onToggle: () => setIsNotifsOpen(o => !o), title: 'Seller alerts' }}
             profile={{ name: user.name, role: seller.business, initials: user.initials, detail: `Seller ID ${user.staffId} · ${seller.city}` }}
           />
 
@@ -249,7 +248,6 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               onOpenConfirm={openConfirmCard}
             />
           )}
-          {activePage === 'products' && <SellerProducts products={myProducts} orders={myOrders} searchQuery={searchQuery} onEdit={openEdit} />}
           {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} />}
           {activePage === 'tracking' && (
             <SellerTracking
@@ -270,30 +268,13 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
         </main>
       </div>
 
-      <Modal isOpen={editing !== null} onClose={() => setEditing(null)} title={`Edit · ${editing?.name ?? ''}`} closeOnBackdrop={false}>
-        {editing && (
-          <form onSubmit={saveEdit}>
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="sp-price">Price (₹)</label>
-                <input id="sp-price" type="number" min={0} step={1} placeholder="Not set" value={editPrice} onChange={e => setEditPrice(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label htmlFor="sp-stock">Stock (units)</label>
-                <input id="sp-stock" type="number" min={0} step={1} required value={editStock} onChange={e => setEditStock(e.target.value)} />
-              </div>
-            </div>
-            <label className="check-filter" style={{ marginBottom: 16, display: 'flex' }}>
-              <input type="checkbox" checked={editActive} onChange={e => setEditActive(e.target.checked)} />
-              Show this product on the Manikstu website
-            </label>
-            <div className="modal-footer">
-              <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="submit" className="btn-primary">Save</button>
-            </div>
-          </form>
-        )}
-      </Modal>
+      <NotificationsDrawer
+        isOpen={isNotifsOpen}
+        onClose={() => setIsNotifsOpen(false)}
+        notifications={notifications}
+        onClearAll={() => setDismissedNotifs(notifications.map(n => n.id))}
+        title="Seller alerts"
+      />
 
       <Modal
         isOpen={confirmOrder !== null}

@@ -12,7 +12,7 @@ const PERIOD_LABEL: Record<Period, string> = { month: 'This month', '30d': 'Last
 const inPeriod = (ts: string, p: Period) => p === 'all' || (p === 'month' ? ts.startsWith(MONTH) : daysBefore(ts) < (p === '30d' ? 30 : 90));
 const PAGE_SIZE = 15;
 
-const village = (o: SalesOrder) => o.address.split(',').slice(1).join(',').trim() || o.address;
+const village = (o: SalesOrder) => { const a = o.address ?? ''; return a.split(',').slice(1).join(',').trim() || a; };
 
 interface Props {
   orders: SalesOrder[];
