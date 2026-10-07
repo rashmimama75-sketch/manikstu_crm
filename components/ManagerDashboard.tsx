@@ -46,7 +46,24 @@ import type { SessionUser } from '../lib/session';
 
 const ORDER_CITIES = ['Bhubaneswar', 'Cuttack', 'Berhampur', 'Sambalpur', 'Balasore', 'Koraput', 'Rayagada', 'Bolangir', 'Keonjhar', 'Angul'];
 
-export default function ManagerDashboard({ user, tracker }: { user: SessionUser; tracker: TrackerState }) {
+export default function ManagerDashboard({
+  user,
+  tracker,
+  orders = SALES_ORDERS,
+  customers: initialCustomers = INITIAL_CUSTOMERS,
+  stock: initialStock = INITIAL_STOCK,
+  transactions: initialTransactions = INITIAL_TRANSACTIONS,
+  backend = false,
+}: {
+  user: SessionUser;
+  tracker: TrackerState;
+  orders?: SalesOrder[];
+  customers?: Customer[];
+  stock?: StockRow[];
+  transactions?: Transaction[];
+  /** True when a live backend is configured: write actions go to it, else they mutate local sample data. */
+  backend?: boolean;
+}) {
   // Page Routing State
   const [activePage, setActivePage] = useState<string>('dashboard');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -59,7 +76,7 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
 
   // Data Stores
   // Website orders + telecaller sales, shared by the dashboard and the Orders page
-  const [salesOrders] = useState<SalesOrder[]>(SALES_ORDERS);
+  const [salesOrders] = useState<SalesOrder[]>(orders);
   // Telecalling leads and website enquiries, shown on the dashboard
   // Leads, calls and follow-ups are shared with the telecalling head and the calling executives
   // (kept in sync with the server), so Team overview shows their latest work automatically.
@@ -77,11 +94,11 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
   );
   // Website enquiries are shared with the telecalling head's Enquiries page (kept in sync with the server)
   const [webEnquiries, setWebEnquiries] = useSharedEnquiries(sync, msg => showToast(`⚠️ ${msg}`));
-  const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
+  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [franchises] = useState<Franchise[]>(INITIAL_FRANCHISES);
   const [fpos] = useState<FPO[]>(INITIAL_FPOS);
-  const [stock, setStock] = useState<StockRow[]>(INITIAL_STOCK);
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [stock, setStock] = useState<StockRow[]>(initialStock);
+  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
 
   // Manager Notifications
   const [notifications, setNotifications] = useState([
@@ -160,47 +177,104 @@ export default function ManagerDashboard({ user, tracker }: { user: SessionUser;
     }
   };
 
-  // Add Farmer / Customer Profile
-  const handleAddCustomer = (e: React.FormEvent) => {
+  // Add Farmer / Customer Profile (saved on the backend when configured, else local sample)
+  const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustomerName.trim() || !newCustomerPhone.trim()) return;
-    const id = `C-${String(customers.length + 1).padStart(3, '0')}`;
-    const newCust: Customer = {
-      id,
-      name: newCustomerName.trim(),
-      location: newCustomerLocation,
-      ordersCount: 0,
-      lifetimeValue: 0,
-      lastOrder: '—',
-      status: 'New',
-      phone: newCustomerPhone.trim(),
-      landHolding: newCustomerLand.trim() || '—',
-      crops: [],
-      livestock: { cows: 0, buffaloes: 0, goats: 0, sheep: 0, poultry: 0 },
-    };
-    setCustomers([newCust, ...customers]);
-    setActiveModal(null);
-    setNewCustomerName('');
-    setNewCustomerPhone('');
-    setNewCustomerLand('');
-    showToast(`Farmer profile for ${newCust.name} added`);
+    if (!backend) {
+      const id = `C-${String(customers.length + 1).padStart(3, '0')}`;
+      const newCust: Customer = {
+        id,
+        name: newCustomerName.trim(),
+        location: newCustomerLocation,
+        ordersCount: 0,
+        lifetimeValue: 0,
+        lastOrder: '—',
+        status: 'New',
+        phone: newCustomerPhone.trim(),
+        landHolding: newCustomerLand.trim() || '—',
+        crops: [],
+        livestock: { cows: 0, buffaloes: 0, goats: 0, sheep: 0, poultry: 0 },
+      };
+      setCustomers([newCust, ...customers]);
+      setActiveModal(null);
+      setNewCustomerName('');
+      setNewCustomerPhone('');
+      setNewCustomerLand('');
+      showToast(`Farmer profile for ${newCust.name} added`);
+      return;
+    }
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCustomerName.trim(),
+          phone: newCustomerPhone.replace(/\D/g, '').slice(-10),
+          location: newCustomerLocation,
+          landHolding: newCustomerLand.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(`⚠️ ${data.error || 'Could not add the farmer'}`); return; }
+      setCustomers([data.data as Customer, ...customers]);
+      setActiveModal(null);
+      setNewCustomerName('');
+      setNewCustomerPhone('');
+      setNewCustomerLand('');
+      showToast(`Farmer profile for ${data.data.name} added`);
+    } catch {
+      showToast('⚠️ Could not reach the server. Try again.');
+    }
   };
 
-  // Reorder Item
-  const handleTriggerReorder = (rowIds: string[]) => {
+  // Reorder Item (saved on the backend when configured, else local sample)
+  const handleTriggerReorder = async (rowIds: string[]) => {
     const rows = stock.filter(r => rowIds.includes(r.id));
     if (rows.length === 0) return;
-    setStock(prev => prev.map(r => (rowIds.includes(r.id) ? { ...r, stock: r.reorderLevel * 2, restockedDaysAgo: 0 } : r)));
-    const product = productById(rows[0].productId).name;
-    showToast(rows.length === 1
-      ? `Reorder placed: ${product} for ${pointById(rows[0].pointId).name}`
-      : `Reorder placed: ${product} for ${rows.length} locations`);
+    if (!backend) {
+      setStock(prev => prev.map(r => (rowIds.includes(r.id) ? { ...r, stock: r.reorderLevel * 2, restockedDaysAgo: 0 } : r)));
+      const product = productById(rows[0].productId).name;
+      showToast(rows.length === 1
+        ? `Reorder placed: ${product} for ${pointById(rows[0].pointId).name}`
+        : `Reorder placed: ${product} for ${rows.length} locations`);
+      return;
+    }
+    try {
+      const res = await fetch('/api/inventory/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowIds: rowIds.map(Number) }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(`⚠️ ${data.error || 'Could not place the reorder'}`); return; }
+      const updated = new Map((data.data as StockRow[]).map(r => [r.id, r]));
+      setStock(prev => prev.map(r => updated.get(r.id) ?? r));
+      const product = productById(rows[0].productId).name;
+      showToast(rows.length === 1
+        ? `Reorder placed: ${product} for ${pointById(rows[0].pointId).name}`
+        : `Reorder placed: ${product} for ${rows.length} locations`);
+    } catch {
+      showToast('⚠️ Could not reach the server. Try again.');
+    }
   };
 
-  // Approve Transaction
-  const handleApproveTransaction = (txId: string) => {
-    setTransactions(prev => prev.map(t => t.id === txId ? { ...t, status: 'Settled' } : t));
-    showToast(`Transaction ${txId} approved & settled`);
+  // Approve Transaction (saved on the backend when configured, else local sample)
+  const handleApproveTransaction = async (txId: string) => {
+    if (!backend) {
+      setTransactions(prev => prev.map(t => (t.id === txId ? { ...t, status: 'Settled' } : t)));
+      showToast(`Transaction ${txId} approved & settled`);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/finance/transactions/${txId}/approve`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { showToast(`⚠️ ${data.error || 'Could not approve the transaction'}`); return; }
+      setTransactions(prev => prev.map(t => (t.id === txId ? (data.data as Transaction) : t)));
+      showToast(`Transaction ${txId} approved & settled`);
+    } catch {
+      showToast('⚠️ Could not reach the server. Try again.');
+    }
   };
 
   const navGroups: NavGroup[] = [
