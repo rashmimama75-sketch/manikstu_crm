@@ -100,8 +100,10 @@ export const PAYOUT_CHIP: Record<PayoutStatus, string> = {
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   pending: 'New',
   confirmed: 'Confirmed',
-  shipped: 'Shipped',
+  ready_for_dispatch: 'Ready for dispatch',
+  shipped: 'Dispatched',
   delivered: 'Delivered',
+  rejected: 'Rejected',
   cancelled: 'Cancelled',
 };
 

@@ -31,7 +31,9 @@ export const nowStamp = () => {
 export const ORDER_CHIP: Record<OrderStatus, string> = {
   pending: 'pending',
   confirmed: 'confirmed',
+  ready_for_dispatch: 'confirmed',
   shipped: 'transit',
   delivered: 'delivered',
+  rejected: 'muted',
   cancelled: 'muted',
 };

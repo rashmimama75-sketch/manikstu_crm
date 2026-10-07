@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { BarChart3, Boxes, LayoutDashboard, MapPin, ShoppingCart, Truck, Wallet } from 'lucide-react';
+import { BarChart3, Boxes, ImagePlus, LayoutDashboard, MapPin, ShoppingCart, Truck, Wallet } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
@@ -40,8 +40,10 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
   // Sample data, kept in this page for now: changes reset on refresh until the backend has sellers.
   const [orders, setOrders] = useState<SalesOrder[]>(initialOrders);
   const [catalog, setCatalog] = useState<CatalogProduct[]>(initialProducts);
+  // Product ids this seller owns; grows when they add a product.
+  const [ownedIds, setOwnedIds] = useState<number[]>(seller.productIds);
 
-  const myProducts = useMemo(() => catalog.filter(p => seller.productIds.includes(p.id)), [catalog, seller]);
+  const myProducts = useMemo(() => catalog.filter(p => ownedIds.includes(p.id)), [catalog, ownedIds]);
   const myOrders = useMemo(() => sellerOrders(orders, seller, catalog), [orders, seller, catalog]);
 
   // Notifications: things that need the seller's attention, newest concern first.
@@ -72,8 +74,39 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
   const advanceOrder = (orderId: number, to: OrderStatus) => {
     const at = nowStamp();
     const order = orders.find(o => o.id === orderId);
+    const previousStatus = order?.status;
     setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, status: to, status_history: [...o.status_history, { status: to, at }] } : o)));
     if (order) showToast(`${order.order_number} marked ${ORDER_STATUS_LABEL[to].toLowerCase()}`);
+
+    // Persist it. This used to be local state only, so a seller's confirmation
+    // was lost on the next refresh and dispatch was never really gated. Move
+    // the row optimistically, then put it back if the server disagrees — it is
+    // the backend that decides which transitions are legal.
+    void (async () => {
+      try {
+        const res = await fetch(`/api/seller/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: to }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (previousStatus) {
+            setOrders(prev => prev.map(o => (o.id === orderId
+              ? { ...o, status: previousStatus, status_history: o.status_history.filter(h => !(h.status === to && h.at === at)) }
+              : o)));
+          }
+          showToast(body.error ?? 'Could not save that change.');
+        }
+      } catch {
+        if (previousStatus) {
+          setOrders(prev => prev.map(o => (o.id === orderId
+            ? { ...o, status: previousStatus, status_history: o.status_history.filter(h => !(h.status === to && h.at === at)) }
+            : o)));
+        }
+        showToast('Could not reach the server.');
+      }
+    })();
     // Once shipped or delivered, the seller's next job is tracking the delivery, so take them
     // straight there and filter to this order — a fresh shipment isn't "late" yet, so it sorts
     // near the bottom of the default list and would otherwise be invisible without this.
@@ -159,6 +192,85 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     setMovements(prev => [...prev, { id: prev.length + 1, productId: restocking.id, units, note: restockNote.trim(), at: nowStamp() }]);
     setRestocking(null);
     showToast(`${restocking.name}: +${units} units added to stock`);
+  };
+
+  // Add product (Stock page): create a full listing, laid out like the website admin panel.
+  const [adding, setAdding] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const SPEC_FIELDS: [label: string, placeholder: string][] = [
+    ['Form', 'e.g. Pellet / Powder / Liquid'],
+    ['Packaging Type', 'e.g. Bag / Bottle / Sachet'],
+    ['Grade Standard', 'e.g. Feed Grade / Food Grade'],
+    ['Shelf Life', 'e.g. 12 months'],
+    ['Type Of Supplement', 'e.g. Nutritional Supplement'],
+    ['Packaging', 'e.g. 500 ml / 25 kg'],
+    ['Country of Origin', 'e.g. Made in India'],
+  ];
+  const emptyAdd = {
+    name: '', slug: '', category: 'Health' as 'Health' | 'Nutrition', size: '', sku: '', price: '', stock: '', order: '0',
+    active: true, featured: false, description: '', longDescription: '', highlights: '', recommendedFor: '',
+    usage: '', storage: '', ingredients: '',
+  };
+  const [add, setAdd] = useState(emptyAdd);
+  const [addSpecs, setAddSpecs] = useState<Record<string, string>>({});
+  const [addImages, setAddImages] = useState<Record<string, string>>({}); // slot -> data URL
+  const setAddField = <K extends keyof typeof emptyAdd>(k: K, v: (typeof emptyAdd)[K]) => setAdd(prev => ({ ...prev, [k]: v }));
+  const pickImage = (slot: string, file: File | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setAddImages(prev => ({ ...prev, [slot]: String(reader.result) }));
+    reader.readAsDataURL(file);
+  };
+  const openAddProduct = () => { setAdd(emptyAdd); setAddSpecs({}); setAddImages({}); setAddError(null); setAdding(true); };
+  const toLines = (s: string) => s.split('\n').map(l => l.trim()).filter(Boolean);
+  const saveAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = add.name.replace(/\s+/g, ' ').trim();
+    if (name.length < 3) { setAddError('Enter a product name (at least 3 characters).'); return; }
+    if (catalog.some(p => p.name.toLowerCase() === name.toLowerCase())) { setAddError('A product with this name already exists.'); return; }
+    const price = add.price.trim() === '' ? null : Math.max(0, Math.round(Number(add.price)));
+    const stock = Math.max(0, Math.round(Number(add.stock) || 0));
+    const highlights = toLines(add.highlights);
+    const recommendedFor = toLines(add.recommendedFor);
+    const specifications = SPEC_FIELDS
+      .map(([label]) => ({ label, value: (addSpecs[label] ?? '').trim() }))
+      .filter(s => s.value !== '');
+    const images = Object.entries(addImages).filter(([, v]) => v).map(([, v]) => v);
+    setAddBusy(true);
+    setAddError(null);
+    try {
+      const res = await fetch('/api/seller/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name, slug: add.slug.trim() || null, category: add.category, size: add.size.trim() || null, sku: add.sku.trim() || null,
+          price, is_active: add.active, is_featured: add.featured, display_order: Math.round(Number(add.order) || 0),
+          description: add.description.trim() || null, long_description: add.longDescription.trim() || null,
+          highlights, recommended_for: recommendedFor, specifications,
+          usage_instructions: add.usage.trim() || null, storage_instructions: add.storage.trim() || null, ingredients: add.ingredients.trim() || null,
+          images,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setAddError(data.error || 'Could not add the product.'); setAddBusy(false); return; }
+      const id: number = data.product?.id ?? (Math.max(0, ...catalog.map(p => p.id)) + 1);
+      const product: CatalogProduct = {
+        id, name, slug: (add.slug.trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')), category: add.category, size: add.size.trim(),
+        sku: add.sku.trim() || null, price, stock_quantity: stock, description: add.description.trim(), long_description: add.longDescription.trim(),
+        image: images[0] ?? '', images, highlights, specifications, usage_instructions: add.usage.trim(), storage_instructions: add.storage.trim(),
+        ingredients: add.ingredients.trim(), recommended_for: recommendedFor, rating: null, rating_count: 0, is_featured: add.featured,
+        is_active: add.active, order: Math.round(Number(add.order) || 0), translations: [],
+      };
+      setCatalog(prev => [...prev, product]);
+      setOwnedIds(prev => [...prev, id]);
+      setAdding(false);
+      setAddBusy(false);
+      showToast(`${name} added${add.active ? ' · live on website' : ''}`);
+    } catch {
+      setAddError('Could not reach the server. Please try again.');
+      setAddBusy(false);
+    }
   };
 
   // Matches what the Orders page shows: new orders still waiting to be confirmed.
@@ -248,7 +360,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               onOpenConfirm={openConfirmCard}
             />
           )}
-          {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} />}
+          {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} onAddProduct={openAddProduct} />}
           {activePage === 'tracking' && (
             <SellerTracking
               orders={myOrders}
@@ -354,6 +466,140 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
             </div>
           </form>
         )}
+      </Modal>
+
+      <Modal isOpen={adding} onClose={() => setAdding(false)} title="Add a product" closeOnBackdrop={false} wide>
+        <form onSubmit={saveAddProduct} className="product-form">
+          <div className="pf-grid">
+            <div className="pf-main">
+              <section className="pf-section">
+                <h3 className="pf-section-title">Basics</h3>
+                <div className="form-group">
+                  <label htmlFor="ap-name">Product name *</label>
+                  <input id="ap-name" type="text" required placeholder="e.g. Calcium Syrup" value={add.name} onChange={e => setAddField('name', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-slug">Slug <span className="pf-hint">leave blank to generate from the name</span></label>
+                  <input id="ap-slug" type="text" placeholder="calcium-syrup" value={add.slug} onChange={e => setAddField('slug', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-desc">Short description</label>
+                  <textarea id="ap-desc" rows={2} placeholder="One-line summary shown on product cards." value={add.description} onChange={e => setAddField('description', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-long">Full description</label>
+                  <textarea id="ap-long" rows={4} placeholder="Shown on the product detail page." value={add.longDescription} onChange={e => setAddField('longDescription', e.target.value)} />
+                </div>
+              </section>
+
+              <section className="pf-section">
+                <h3 className="pf-section-title">Highlights &amp; details</h3>
+                <div className="form-group">
+                  <label htmlFor="ap-high">Highlights <span className="pf-hint">one per line</span></label>
+                  <textarea id="ap-high" rows={3} placeholder={'Boosts immunity\nImproves milk yield'} value={add.highlights} onChange={e => setAddField('highlights', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-rec">Recommended for <span className="pf-hint">one per line</span></label>
+                  <textarea id="ap-rec" rows={2} placeholder={'Goats\nSheep'} value={add.recommendedFor} onChange={e => setAddField('recommendedFor', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Product specifications <span className="pf-hint">only rows with a value appear on the website</span></label>
+                  <div className="pf-specs">
+                    {SPEC_FIELDS.map(([label, placeholder]) => (
+                      <div key={label} className="pf-spec-row">
+                        <span className="pf-spec-label">{label}</span>
+                        <input type="text" placeholder={placeholder} value={addSpecs[label] ?? ''} onChange={e => setAddSpecs(prev => ({ ...prev, [label]: e.target.value }))} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-use">Usage / dosage</label>
+                  <textarea id="ap-use" rows={2} value={add.usage} onChange={e => setAddField('usage', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-store">Storage &amp; handling</label>
+                  <textarea id="ap-store" rows={2} value={add.storage} onChange={e => setAddField('storage', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-ing">Composition / ingredients</label>
+                  <textarea id="ap-ing" rows={2} value={add.ingredients} onChange={e => setAddField('ingredients', e.target.value)} />
+                </div>
+              </section>
+
+              <section className="pf-section">
+                <h3 className="pf-section-title">Product images</h3>
+                <p className="pf-hint" style={{ display: 'block', marginBottom: 10 }}>One main image (shown first) and up to three angle views. JPG, PNG or WebP.</p>
+                <div className="pf-images">
+                  {[['main', 'Main image'], ['angle1', 'Angle view 1'], ['angle2', 'Angle view 2'], ['angle3', 'Angle view 3']].map(([slot, label]) => (
+                    <label key={slot} className="pf-img-slot">
+                      {addImages[slot]
+                        ? <img src={addImages[slot]} alt={label} />
+                        : <span className="pf-img-ph"><ImagePlus size={20} /><span>Upload</span></span>}
+                      <span className="pf-img-label">{label}</span>
+                      <input type="file" accept="image/*" hidden onChange={e => pickImage(slot, e.target.files?.[0])} />
+                    </label>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <aside className="pf-side">
+              <section className="pf-section">
+                <h3 className="pf-section-title">Publish</h3>
+                <label className="check-filter" style={{ display: 'flex' }}>
+                  <input type="checkbox" checked={add.active} onChange={e => setAddField('active', e.target.checked)} />
+                  Published <span className="pf-hint">live on the website</span>
+                </label>
+                <label className="check-filter" style={{ display: 'flex', marginTop: 8 }}>
+                  <input type="checkbox" checked={add.featured} onChange={e => setAddField('featured', e.target.checked)} />
+                  Featured
+                </label>
+              </section>
+
+              <section className="pf-section">
+                <h3 className="pf-section-title">Organisation</h3>
+                <div className="form-group">
+                  <label htmlFor="ap-cat">Category</label>
+                  <select id="ap-cat" className="filter-select" value={add.category} onChange={e => setAddField('category', e.target.value as 'Health' | 'Nutrition')} style={{ width: '100%' }}>
+                    <option value="Health">Health</option>
+                    <option value="Nutrition">Nutrition</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-order">Order <span className="pf-hint">lower shows first</span></label>
+                  <input id="ap-order" type="number" step={1} value={add.order} onChange={e => setAddField('order', e.target.value)} />
+                </div>
+              </section>
+
+              <section className="pf-section">
+                <h3 className="pf-section-title">Pricing &amp; stock</h3>
+                <div className="form-group">
+                  <label htmlFor="ap-price">Price (₹)</label>
+                  <input id="ap-price" type="number" min={0} step={1} placeholder="Not set" value={add.price} onChange={e => setAddField('price', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-size">Size / unit</label>
+                  <input id="ap-size" type="text" placeholder="e.g. 500 ml" value={add.size} onChange={e => setAddField('size', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-sku">SKU / product ID</label>
+                  <input id="ap-sku" type="text" placeholder="Optional" value={add.sku} onChange={e => setAddField('sku', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ap-stock">Opening stock (units)</label>
+                  <input id="ap-stock" type="number" min={0} step={1} placeholder="0" value={add.stock} onChange={e => setAddField('stock', e.target.value)} />
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          {addError && <p className="loc" style={{ color: 'var(--rust)', margin: '4px 0 12px' }}>{addError}</p>}
+          <div className="modal-footer">
+            <button type="button" className="btn-secondary" onClick={() => setAdding(false)}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={addBusy}>{addBusy ? 'Adding…' : 'Add product'}</button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

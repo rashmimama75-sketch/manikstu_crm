@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { PackagePlus } from 'lucide-react';
+import { PackagePlus, Plus } from 'lucide-react';
 import type { CatalogProduct } from '../../data/catalogProducts';
 import { LOW_STOCK_LEVEL } from '../../data/stockLevels';
 import { daysBefore, pct, rupees, rupeesShort, shortDate, shortDateTime } from '../../lib/format';
@@ -99,9 +99,10 @@ interface Props {
   movements: StockMovement[];
   searchQuery: string;
   onRestock: (product: CatalogProduct, suggested: number) => void;
+  onAddProduct: () => void;
 }
 
-export default function SellerStock({ products, orders, movements, searchQuery, onRestock }: Props) {
+export default function SellerStock({ products, orders, movements, searchQuery, onRestock, onAddProduct }: Props) {
   const [tab, setTab] = useState<Tab>('all');
   const [region, setRegion] = useState<Region>('all');
   const rows = useMemo(() => stockRows(products, orders), [products, orders]);
@@ -194,6 +195,9 @@ export default function SellerStock({ products, orders, movements, searchQuery, 
           {TABS.map(t => (
             <button key={t.key} className={`filter-chip ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>{t.label} ({count(t.key)})</button>
           ))}
+          <button className="btn-primary btn-small" onClick={onAddProduct} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Plus size={15} /> Add product
+          </button>
         </div>
         <div className="stock-filters">
           <RegionDropdown

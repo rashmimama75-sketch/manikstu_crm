@@ -4,9 +4,9 @@ import { TOKEN_COOKIE, backendCall, relay, usingBackend } from '../../../../lib/
 
 export const dynamic = 'force-dynamic';
 
-// Seller lists/edits one of their products (price + show-on-website). Proxied to
-// the CRM backend; in local (sample-data) mode it's a no-op so the UI still works.
-export async function PATCH(request: Request) {
+// Seller adds / edits a product (price + show-on-website). Proxied to the CRM
+// backend; in local (sample-data) mode it's a no-op so the UI still works.
+async function forward(request: Request, method: 'POST' | 'PATCH', fallback: string) {
   if (!usingBackend()) {
     return NextResponse.json({ ok: true, local: true });
   }
@@ -20,9 +20,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
   try {
-    const r = await backendCall('/seller/products', { method: 'PATCH', token, body });
-    return await relay(r, 'Could not update the product.');
+    const r = await backendCall('/seller/products', { method, token, body });
+    return await relay(r, fallback);
   } catch {
     return NextResponse.json({ error: 'Could not reach the server.' }, { status: 502 });
   }
 }
+
+export const POST = (request: Request) => forward(request, 'POST', 'Could not add the product.');
+export const PATCH = (request: Request) => forward(request, 'PATCH', 'Could not update the product.');

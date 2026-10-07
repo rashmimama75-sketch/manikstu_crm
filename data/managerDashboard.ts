@@ -66,7 +66,16 @@ export interface TrackerSale {
   sold_at: string;
 }
 
-export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+// 'shipped' is what the spec calls DISPATCHED; it stays the stored value.
+// 'rejected' is the seller declining an order, as against the customer cancelling.
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'ready_for_dispatch'
+  | 'shipped'
+  | 'delivered'
+  | 'rejected'
+  | 'cancelled';
 export type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
 export type PaymentMethod = 'UPI' | 'COD' | 'Card' | 'Net banking';
 export type OrderSource = 'website' | 'telecaller';
