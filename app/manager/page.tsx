@@ -19,6 +19,7 @@ export default async function ManagerPage() {
       user={user}
       tracker={tracker}
       orders={data.orders}
+      orderReport={data.orderReport}
       customers={data.customers}
       stock={data.stock}
       transactions={data.transactions}

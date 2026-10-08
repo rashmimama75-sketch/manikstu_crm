@@ -6,8 +6,9 @@ import Modal from '../Modal';
 import { STAGE_CHIP, STAGE_FLOW, STAGE_LABEL, TrackStage, Tracking, stageIndex } from '../telecaller/orderTracking';
 import { ManualStageAction, SellerOrder, ShipmentDetails, nextManualStep, sellerTrackingFor } from './sellerData';
 
-type Tab = 'confirmed' | 'active' | 'late' | 'delivered' | 'cancelled' | 'all';
+type Tab = 'new' | 'confirmed' | 'active' | 'late' | 'delivered' | 'cancelled' | 'all';
 const TABS: { key: Tab; label: string }[] = [
+  { key: 'new', label: 'New · to confirm' },
   { key: 'confirmed', label: 'Ready to ship' },
   { key: 'active', label: 'On the way' },
   { key: 'late', label: 'Late' },
@@ -25,7 +26,8 @@ const lastAt = (t: Tracking, stage: TrackStage) => t.events.find(e => e.stage ==
 // shipping, making already-shipped orders look like they'd been bumped off the list.
 const inTab = (o: SellerOrder, t: Tracking, tab: Tab) =>
   tab === 'all' ? true
-    : tab === 'confirmed' ? o.order.status === 'confirmed'
+    : tab === 'new' ? o.order.status === 'pending'
+    : tab === 'confirmed' ? o.order.status === 'confirmed' || o.order.status === 'ready_for_dispatch'
     : tab === 'active' ? o.order.status === 'shipped'
     : tab === 'late' ? t.delayed
     : t.stage === tab;
@@ -50,7 +52,7 @@ interface Props {
 }
 
 export default function SellerTracking({ orders, searchQuery, shipmentDetails, onAdvanceStage, onOpenConfirm }: Props) {
-  const [tab, setTab] = useState<Tab>('active');
+  const [tab, setTab] = useState<Tab>('all');
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
 
@@ -85,7 +87,7 @@ export default function SellerTracking({ orders, searchQuery, shipmentDetails, o
   return (
     <>
       <div className="scoreboard">
-        <div className="score"><div className="num">{tracked.filter(x => x.o.order.status === 'confirmed').length}</div><div className="label">Waiting for pickup</div></div>
+        <div className="score"><div className="num">{tracked.filter(x => x.o.order.status === 'confirmed' || x.o.order.status === 'ready_for_dispatch').length}</div><div className="label">Waiting for pickup</div></div>
         <div className="score"><div className="num">{tracked.filter(x => x.t.stage === 'shipped').length}</div><div className="label">In transit</div></div>
         <div className="score"><div className="num">{tracked.filter(x => x.t.stage === 'out_for_delivery').length}</div><div className="label">Out for delivery</div></div>
         <div className="score"><div className="num">{count('late')}{count('late') > 0 && <small className="warn">past due date</small>}</div><div className="label">Late</div></div>
@@ -129,7 +131,7 @@ export default function SellerTracking({ orders, searchQuery, shipmentDetails, o
                         {t.expected_at && <span className={`loc ${t.delayed ? 'text-warn' : ''}`}>{t.expectedIsEstimate ? 'est. ' : 'by '}{shortDate(t.expected_at)}</span>}
                       </div>
                     </td>
-                    <td>{t.courier ? <>{t.courier}<div className="loc">{t.awb}</div></> : <span className="loc">Not shipped yet</span>}</td>
+                    <td>{t.courier ? <>{t.courier}<div className="loc">{t.awb}</div></> : <span className="loc">{o.order.status === 'pending' ? 'Confirm it on the Orders page' : 'Not shipped yet'}</span>}</td>
                     <td className="track-action">
                       <div className="row-actions">
                         {step && (

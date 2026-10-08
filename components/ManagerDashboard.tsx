@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import FooterFrieze from './FooterFrieze';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
@@ -38,6 +39,7 @@ import {
   SALES_ORDERS,
   TRACKER_SALES,
   SalesOrder,
+  OrderReport,
 } from '../data/managerDashboard';
 import type { TrackerState } from '../lib/trackerOps';
 import { useSharedEnquiries, useTracker } from '../lib/useTracker';
@@ -53,11 +55,14 @@ export default function ManagerDashboard({
   customers: initialCustomers = INITIAL_CUSTOMERS,
   stock: initialStock = INITIAL_STOCK,
   transactions: initialTransactions = INITIAL_TRANSACTIONS,
+  orderReport = null,
   backend = false,
 }: {
   user: SessionUser;
   tracker: TrackerState;
   orders?: SalesOrder[];
+  /** Seller-wise / telecaller-wise order roll-ups from the backend (null offline). */
+  orderReport?: OrderReport | null;
   customers?: Customer[];
   stock?: StockRow[];
   transactions?: Transaction[];
@@ -76,7 +81,15 @@ export default function ManagerDashboard({
 
   // Data Stores
   // Website orders + telecaller sales, shared by the dashboard and the Orders page
-  const [salesOrders] = useState<SalesOrder[]>(orders);
+  const salesOrders = orders;
+  // With a live backend, re-fetch the server data every 15s so orders the seller confirms and calls the
+  // telecallers log show up without a manual reload.
+  const router = useRouter();
+  useEffect(() => {
+    if (!backend) return;
+    const id = setInterval(() => router.refresh(), 15000);
+    return () => clearInterval(id);
+  }, [backend, router]);
   // Telecalling leads and website enquiries, shown on the dashboard
   // Leads, calls and follow-ups are shared with the telecalling head and the calling executives
   // (kept in sync with the server), so Team overview shows their latest work automatically.
@@ -369,6 +382,7 @@ export default function ManagerDashboard({
             <OrdersView
               key={searchSeed?.page === 'orders' ? searchSeed.token : 'orders'}
               orders={salesOrders}
+              report={orderReport}
               onToast={showToast}
               initialQuery={searchSeed?.page === 'orders' ? searchSeed.query : undefined}
             />

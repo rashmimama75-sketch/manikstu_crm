@@ -70,7 +70,19 @@ function seeded(id: number) {
 
 const historyAt = (o: SalesOrder, s: OrderStatus) => o.status_history.find(h => h.status === s)?.at ?? null;
 
-export function trackingFor(o: SalesOrder, now = nowStamp()): Tracking {
+/** True for orders that came from the CRM backend (they carry a shared timeline `stage`); the offline sample orders don't. */
+export const isLiveOrder = (o: SalesOrder) => o.stage !== undefined;
+
+/** The real current time, as the same `YYYY-MM-DDTHH:MM` stamp the backend uses. Sample orders live on a fixed demo calendar, live ones don't. */
+export function realNowStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+export function trackingFor(o: SalesOrder, nowArg = nowStamp()): Tracking {
+  const live = isLiveOrder(o);
+  const now = live ? realNowStamp() : nowArg;
   const r = seeded(o.id);
   const courier = COURIERS[Math.floor(r() * COURIERS.length)];
   const hub = HUB[o.city] ?? 'Bhubaneswar';
@@ -80,9 +92,9 @@ export function trackingFor(o: SalesOrder, now = nowStamp()): Tracking {
 
   add('placed', o.created_at, o.source === 'website' ? 'Order placed on the website' : 'Order taken on a call', o.source === 'website' ? 'Website' : 'Telecalling team');
 
-  if (o.status === 'cancelled') {
-    const at = historyAt(o, 'cancelled') ?? o.created_at;
-    add('cancelled', at, `Order cancelled${o.payment_status === 'refunded' ? ', payment refunded' : ''}`, WAREHOUSE);
+  if (o.status === 'cancelled' || o.status === 'rejected') {
+    const at = historyAt(o, o.status) ?? o.created_at;
+    add('cancelled', at, o.status === 'rejected' ? 'Order rejected by the seller' : `Order cancelled${o.payment_status === 'refunded' ? ', payment refunded' : ''}`, WAREHOUSE);
     return { stage: 'cancelled', courier: null, awb: null, expected_at: null, expectedIsEstimate: false, delayed: false, events };
   }
 
@@ -92,7 +104,8 @@ export function trackingFor(o: SalesOrder, now = nowStamp()): Tracking {
   if (confirmedAt) add('confirmed', confirmedAt, 'Order confirmed with the customer', WAREHOUSE);
 
   let packedAt: string | null = null;
-  if (shippedAt) packedAt = addHours(shippedAt, -(3 + Math.round(r() * 7)));
+  if (live) packedAt = historyAt(o, 'ready_for_dispatch'); // a real order is packed when the seller says so, not by a dice roll
+  else if (shippedAt) packedAt = addHours(shippedAt, -(3 + Math.round(r() * 7)));
   else if (confirmedAt && r() < 0.6) {
     const at = addHours(confirmedAt, 6 + Math.round(r() * 4));
     if (at <= now) packedAt = at;
@@ -113,7 +126,7 @@ export function trackingFor(o: SalesOrder, now = nowStamp()): Tracking {
     } else {
       const ofd = `${now.slice(0, 10)}T09:${String(10 + Math.round(r() * 40)).padStart(2, '0')}`;
       // Out for delivery today only if it's not already past the courier's date (those are just late)
-      if (addHours(shippedAt, 40) <= now && expected_at.slice(0, 10) >= now.slice(0, 10) && r() < 0.6) {
+      if (!live && addHours(shippedAt, 40) <= now && expected_at.slice(0, 10) >= now.slice(0, 10) && r() < 0.6) {
         add('out_for_delivery', ofd, 'Out for delivery', where);
         if (events.some(e => e.stage === 'out_for_delivery')) stage = 'out_for_delivery';
       }

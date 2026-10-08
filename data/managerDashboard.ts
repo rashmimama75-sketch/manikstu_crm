@@ -105,7 +105,48 @@ export interface SalesOrder {
   payment_method: PaymentMethod;
   notes: string | null;
   created_at: string;
-  status_history: { status: OrderStatus; at: string }[];
+  status_history: { status: OrderStatus; at: string; by?: string | null; note?: string | null }[];
+  // Present on orders from the CRM backend (absent in the offline sample data).
+  stage?: string;
+  stage_label?: string;
+  sellers?: string[];
+  communication_status?: CommunicationStatus;
+  handled_by?: number | null;
+  handled_by_name?: string | null;
+  last_contacted_at?: string | null;
+  next_followup_at?: string | null;
+  calls?: OrderCall[];
+  activity?: OrderActivity[];
+}
+
+export type CommunicationStatus = 'not_contacted' | 'contacted' | 'follow_up' | 'unreachable' | 'resolved';
+export type CallStatus = 'connected' | 'no_answer' | 'busy' | 'switched_off' | 'wrong_number' | 'callback_requested';
+
+export interface OrderCall {
+  id: number;
+  call_status: CallStatus;
+  communication_status: CommunicationStatus;
+  remarks: string | null;
+  followup_at: string | null;
+  at: string;
+  by: string | null;
+}
+
+/** One line of an order's history: a status change or a call, oldest first. */
+export interface OrderActivity {
+  kind: 'status' | 'call';
+  status: string;
+  at: string;
+  by: string | null;
+  text: string | null;
+}
+
+/** The manager's order board (GET /reports/orders). */
+export interface OrderReport {
+  totals: { total: number; pending: number; confirmed: number; cancelled: number; by_status: Record<string, number> };
+  sellers: { seller_id: number | null; seller: string; orders: number; pending: number; confirmed: number; cancelled: number; revenue: number }[];
+  telecallers: { user_id: number; name: string; orders: number; contacted: number; follow_up: number; unreachable: number; resolved: number }[];
+  telecalling: { awaiting_first_call: number; followups_overdue: number };
 }
 
 export type EnquiryType = 'general' | 'sales' | 'partnership' | 'career';

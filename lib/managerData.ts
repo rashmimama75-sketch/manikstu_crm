@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { TOKEN_COOKIE, backendCall, usingBackend } from './backend';
-import { SALES_ORDERS, type SalesOrder } from '../data/managerDashboard';
+import { SALES_ORDERS, type OrderReport, type SalesOrder } from '../data/managerDashboard';
 import { INITIAL_CUSTOMERS, INITIAL_TRANSACTIONS, type Customer, type Transaction } from '../data/initialData';
 import { INITIAL_STOCK, type StockRow } from '../data/centralInventory';
 
@@ -11,6 +11,8 @@ import { INITIAL_STOCK, type StockRow } from '../data/centralInventory';
 
 export interface ManagerData {
   orders: SalesOrder[];
+  /** Seller-wise / telecaller-wise order roll-ups; null offline. */
+  orderReport: OrderReport | null;
   customers: Customer[];
   stock: StockRow[];
   transactions: Transaction[];
@@ -30,6 +32,7 @@ async function get(path: string, token: string): Promise<Record<string, unknown>
 export async function getManagerData(): Promise<ManagerData> {
   const sample: ManagerData = {
     orders: SALES_ORDERS,
+    orderReport: null,
     customers: INITIAL_CUSTOMERS,
     stock: INITIAL_STOCK,
     transactions: INITIAL_TRANSACTIONS,
@@ -38,8 +41,9 @@ export async function getManagerData(): Promise<ManagerData> {
   const token = cookies().get(TOKEN_COOKIE)?.value;
   if (!token) return sample;
 
-  const [orders, customers, inventory, finance] = await Promise.all([
+  const [orders, report, customers, inventory, finance] = await Promise.all([
     get('/orders', token),
+    get('/reports/orders', token),
     get('/customers', token),
     get('/inventory', token),
     get('/finance/transactions', token),
@@ -47,6 +51,7 @@ export async function getManagerData(): Promise<ManagerData> {
 
   return {
     orders: (orders?.data as SalesOrder[]) ?? sample.orders,
+    orderReport: (report as unknown as OrderReport | null) ?? null,
     customers: (customers?.data as Customer[]) ?? sample.customers,
     stock: (inventory?.rows as StockRow[]) ?? sample.stock,
     transactions: (finance?.data as Transaction[]) ?? sample.transactions,

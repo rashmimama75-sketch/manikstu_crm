@@ -7,6 +7,8 @@ import {
   OrderStatus,
   PaymentStatus,
   OrderSource,
+  OrderReport,
+  CommunicationStatus,
 } from '../../data/managerDashboard';
 import { MONTH, ORDER_CHIP, daysBefore, rupees, rupeesShort, shortDate, shortDateTime } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
@@ -17,9 +19,36 @@ interface OrdersViewProps {
   orders: SalesOrder[];
   onToast: (message: string) => void;
   initialQuery?: string;
+  /** Seller-wise / telecaller-wise roll-ups from the CRM backend; null on the offline sample data. */
+  report?: OrderReport | null;
 }
 
-const STATUSES: OrderStatus[] = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+const COMM_LABEL: Record<CommunicationStatus, string> = {
+  not_contacted: 'Not called yet', contacted: 'Contacted', follow_up: 'Follow-up due', unreachable: 'Unreachable', resolved: 'Resolved',
+};
+const COMM_CHIP: Record<CommunicationStatus, string> = {
+  not_contacted: 'pending', contacted: 'delivered', follow_up: 'transit', unreachable: 'muted', resolved: 'delivered',
+};
+const CALL_LABEL: Record<string, string> = {
+  connected: 'Call connected', no_answer: 'No answer', busy: 'Line busy', switched_off: 'Phone switched off',
+  wrong_number: 'Wrong number', callback_requested: 'Asked for a callback',
+};
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Order placed', confirmed: 'Seller confirmed', ready_for_dispatch: 'Packed by seller', shipped: 'Shipped',
+  delivered: 'Delivered', rejected: 'Rejected by seller', cancelled: 'Cancelled',
+};
+
+/** The shared timeline every dashboard follows (the backend names the current step in `stage`). */
+const TIMELINE_STEPS = [
+  { key: 'seller_pending', label: 'Placed · seller pending' },
+  { key: 'seller_confirmed', label: 'Seller confirmed' },
+  { key: 'telecalling', label: 'Telecalling' },
+  { key: 'processing', label: 'Packed' },
+  { key: 'shipped', label: 'Shipped' },
+  { key: 'delivered', label: 'Delivered' },
+];
+
+const STATUSES: OrderStatus[] = ['pending', 'confirmed', 'ready_for_dispatch', 'shipped', 'delivered', 'rejected', 'cancelled'];
 const FLOW: OrderStatus[] = ['pending', 'confirmed', 'shipped', 'delivered'];
 const PAYMENT_CHIP: Record<PaymentStatus, string> = { paid: 'delivered', unpaid: 'pending', refunded: 'muted' };
 const PAGE_SIZE = 15;
@@ -91,11 +120,11 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid #ddd;font-size:14px}.r
   win.print();
 }
 
-export default function OrdersView({ orders, onToast, initialQuery }: OrdersViewProps) {
+export default function OrdersView({ orders, onToast, initialQuery, report = null }: OrdersViewProps) {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [sourceFilter, setSourceFilter] = useState<OrderSource | 'all'>('all');
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
-  const [dateRange, setDateRange] = useState<DateRange>(initialQuery ? 'all' : 'month');
+  const [dateRange, setDateRange] = useState<DateRange>(initialQuery || report ? 'all' : 'month'); // live orders are dated by the real calendar, not the sample one
   const [alert, setAlert] = useState<Alert | null>(null);
   const [query, setQuery] = useState(initialQuery ?? '');
   const [page, setPage] = useState(0);
@@ -183,6 +212,72 @@ export default function OrdersView({ orders, onToast, initialQuery }: OrdersView
         </div>
       </div>
 
+      {/* 1b. Order board: headline counts, then seller-wise and telecaller-wise (live backend only) */}
+      {report && (
+        <>
+          <div className="scoreboard">
+            <div className="score"><div className="num">{report.totals.total}</div><div className="label">Total orders</div></div>
+            <div className="score"><div className="num">{report.totals.pending}</div><div className="label">Pending · awaiting seller</div></div>
+            <div className="score"><div className="num">{report.totals.confirmed}</div><div className="label">Confirmed by seller</div></div>
+            <div className="score"><div className="num">{report.totals.cancelled}</div><div className="label">Cancelled / rejected</div></div>
+            <div className="score">
+              <div className="num">{report.telecalling.awaiting_first_call} <small className={report.telecalling.followups_overdue ? 'warn' : ''}>{report.telecalling.followups_overdue} overdue</small></div>
+              <div className="label">Awaiting first call · follow-ups</div>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="table-wrap">
+              <table>
+                <caption style={{ textAlign: 'left', fontWeight: 600, padding: '10px 14px' }}>Seller-wise orders</caption>
+                <thead>
+                  <tr><th>Seller</th><th className="num-col">Orders</th><th className="num-col">Pending</th><th className="num-col">Confirmed</th><th className="num-col">Cancelled</th><th className="num-col">Revenue</th></tr>
+                </thead>
+                <tbody>
+                  {report.sellers.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No orders yet.</td></tr>}
+                  {report.sellers.map(s => (
+                    <tr key={s.seller_id ?? 'none'}>
+                      <td className="strong">{s.seller}</td>
+                      <td className="num-col">{s.orders}</td>
+                      <td className="num-col">{s.pending}</td>
+                      <td className="num-col">{s.confirmed}</td>
+                      <td className="num-col">{s.cancelled}</td>
+                      <td className="num-col">{rupees(s.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="table-wrap">
+              <table>
+                <caption style={{ textAlign: 'left', fontWeight: 600, padding: '10px 14px' }}>Telecaller-wise order status</caption>
+                <thead>
+                  <tr><th>Telecaller</th><th className="num-col">Orders worked</th><th className="num-col">Contacted</th><th className="num-col">Follow-up</th><th className="num-col">Unreachable</th><th className="num-col">Resolved</th></tr>
+                </thead>
+                <tbody>
+                  {report.telecallers.length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No calls logged on orders yet.</td></tr>
+                  )}
+                  {report.telecallers.map(t => (
+                    <tr key={t.user_id}>
+                      <td className="strong">{t.name}</td>
+                      <td className="num-col">{t.orders}</td>
+                      <td className="num-col">{t.contacted}</td>
+                      <td className="num-col">{t.follow_up}</td>
+                      <td className="num-col">{t.unreachable}</td>
+                      <td className="num-col">{t.resolved}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* 2. Needs-attention strip (filters only) */}
       <div className="alert-strip">
         <span className="alert-strip-label">Needs attention</span>
@@ -213,7 +308,7 @@ export default function OrdersView({ orders, onToast, initialQuery }: OrdersView
         <select className="filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value as OrderStatus | 'all'); resetPage(); }} aria-label="Status">
           {(['all', ...STATUSES] as const).map(st => (
             <option key={st} value={st}>
-              {st === 'all' ? 'All statuses' : st[0].toUpperCase() + st.slice(1)} ({st === 'all' ? baseFiltered.length : baseFiltered.filter(o => o.status === st).length})
+              {st === 'all' ? 'All statuses' : st === 'ready_for_dispatch' ? 'Packed' : st[0].toUpperCase() + st.slice(1)} ({st === 'all' ? baseFiltered.length : baseFiltered.filter(o => o.status === st).length})
             </option>
           ))}
         </select>
@@ -288,7 +383,12 @@ export default function OrdersView({ orders, onToast, initialQuery }: OrdersView
                       <span className={`chip ${PAYMENT_CHIP[o.payment_status]}`}>{o.payment_status}</span>
                       <div className="loc">{o.payment_method}</div>
                     </td>
-                    <td><span className={`chip ${ORDER_CHIP[o.status]}`}>{o.status}</span></td>
+                    <td>
+                      <span className={`chip ${ORDER_CHIP[o.status]}`}>{o.stage_label ?? o.status}</span>
+                      {o.communication_status && o.communication_status !== 'not_contacted' && (
+                        <div className="loc">{COMM_LABEL[o.communication_status]}{o.handled_by_name ? ` · ${o.handled_by_name}` : ''}</div>
+                      )}
+                    </td>
                     <td>
                       <button className="kanban-btn" onClick={() => openOrder(o)}>View</button>
                     </td>
@@ -311,7 +411,7 @@ export default function OrdersView({ orders, onToast, initialQuery }: OrdersView
       </div>
 
       <div className="panel-note">
-        Sample data. The backend doesn’t store yet: order source, telecaller on website orders, status change dates, courier and tracking number,
+        {report ? 'Live data from the CRM backend, refreshed every 15 seconds. Not stored yet:' : 'Sample data. The backend doesn’t store yet:'} order source, telecaller on website orders, status change dates, courier and tracking number,
         delivery address per order, discounts and shipping charges, and cancellation reason.
       </div>
 
@@ -377,6 +477,51 @@ export default function OrdersView({ orders, onToast, initialQuery }: OrdersView
                 </div>
               </section>
 
+              {open.activity ? (
+                <>
+                  <section className="od-section">
+                    <div className="od-label">Order tracking · {open.stage_label ?? open.status}</div>
+                    {open.stage === 'cancelled' || open.stage === 'rejected' ? (
+                      <div className="track-bar cancelled" aria-label={open.stage_label}><span /></div>
+                    ) : (
+                      <>
+                        <div className="track-bar" aria-label={`${open.stage_label}, step ${(TIMELINE_STEPS.findIndex(s => s.key === open.stage)) + 1} of ${TIMELINE_STEPS.length}`}>
+                          {TIMELINE_STEPS.map((s, i) => {
+                            const at = TIMELINE_STEPS.findIndex(x => x.key === open.stage);
+                            return <span key={s.key} className={i < at || open.stage === 'delivered' ? 'done' : i === at ? 'now' : ''} title={s.label} />;
+                          })}
+                        </div>
+                        <div className="loc">{TIMELINE_STEPS.map(s => s.label).join(' → ')}</div>
+                      </>
+                    )}
+                  </section>
+                  <section className="od-section od-row">
+                    <div>
+                      <div className="od-label">Seller</div>
+                      <div className="strong">{open.sellers?.length ? open.sellers.join(', ') : '—'}</div>
+                    </div>
+                    <div>
+                      <div className="od-label">Telecalling</div>
+                      <span className={`chip ${COMM_CHIP[open.communication_status ?? 'not_contacted']}`}>{COMM_LABEL[open.communication_status ?? 'not_contacted']}</span>
+                      {open.handled_by_name && <div className="loc">{open.handled_by_name}</div>}
+                      {open.next_followup_at && <div className="loc">Follow up {shortDateTime(open.next_followup_at)}</div>}
+                    </div>
+                  </section>
+                  <section className="od-section">
+                    <div className="od-label">Activity &amp; history</div>
+                    <ul className="track-timeline">
+                      {[...open.activity].reverse().map((a, i) => (
+                        <li key={i}>
+                          <div className="tt-title">{a.kind === 'call' ? CALL_LABEL[a.status] ?? a.status : STATUS_LABEL[a.status] ?? a.status}</div>
+                          <div className="tt-time">
+                            {shortDateTime(a.at)}{a.by ? ` · ${a.by}` : ''}{a.text ? ` · ${a.text}` : ''}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                </>
+              ) : (
               <section className="od-section">
                 <div className="od-label">Status history</div>
                 <ul className="track-timeline">
@@ -391,6 +536,7 @@ export default function OrdersView({ orders, onToast, initialQuery }: OrdersView
                   ))}
                 </ul>
               </section>
+              )}
 
               {open.notes && (
                 <section className="od-section">

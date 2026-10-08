@@ -3,7 +3,7 @@ import type { OrderItem, OrderStatus, SalesOrder } from '../../data/managerDashb
 import { TODAY } from '../../data/today';
 import type { Seller } from '../../data/sellers';
 import { daysBefore, nowStamp } from '../../lib/format';
-import { TrackEvent, TrackStage, Tracking, trackingFor } from '../telecaller/orderTracking';
+import { TrackEvent, TrackStage, Tracking, isLiveOrder, realNowStamp, trackingFor } from '../telecaller/orderTracking';
 
 /** One order as a seller sees it: only their own items, and their share of the money. */
 export interface SellerOrder {
@@ -36,8 +36,10 @@ export type ManualStageAction = 'packed' | 'shipped' | 'out_for_delivery' | 'del
 /** The next fulfilment step the seller can take by hand, from confirmed through delivered. */
 export function nextManualStep(order: SalesOrder, details: ShipmentDetails | undefined): { action: ManualStageAction; label: string } | null {
   if (order.status === 'confirmed') {
-    return details?.packedAt ? { action: 'shipped', label: 'Mark shipped' } : { action: 'packed', label: 'Mark packed' };
+    // Packing is a real status (ready_for_dispatch) on live orders, so an order can only be shipped after it.
+    return isLiveOrder(order) || !details?.packedAt ? { action: 'packed', label: 'Mark packed' } : { action: 'shipped', label: 'Mark shipped' };
   }
+  if (order.status === 'ready_for_dispatch') return { action: 'shipped', label: 'Mark shipped' };
   if (order.status === 'shipped') {
     return details?.outForDeliveryAt ? { action: 'delivered', label: 'Mark delivered' } : { action: 'out_for_delivery', label: 'Mark out for delivery' };
   }
@@ -53,12 +55,13 @@ const historyAt = (o: SalesOrder, s: OrderStatus) => o.status_history.find(h => 
  * expected delivery date are still filled in once shipped (the seller doesn't pick a courier
  * by hand), reusing the same values the simulated trackingFor derives from the real ship date.
  */
-export function sellerTrackingFor(o: SalesOrder, details: ShipmentDetails | undefined, now = nowStamp()): Tracking {
+export function sellerTrackingFor(o: SalesOrder, details: ShipmentDetails | undefined, nowArg = nowStamp()): Tracking {
+  const now = isLiveOrder(o) ? realNowStamp() : nowArg; // live orders are dated by the real calendar
   const base = trackingFor(o, now);
-  if (o.status === 'cancelled') return base;
+  if (o.status === 'cancelled' || o.status === 'rejected') return base;
 
   const confirmedAt = historyAt(o, 'confirmed');
-  const packedAt = details?.packedAt ?? null;
+  const packedAt = historyAt(o, 'ready_for_dispatch') ?? details?.packedAt ?? null;
   const shippedAt = historyAt(o, 'shipped');
   const outAt = details?.outForDeliveryAt ?? null;
   const deliveredAt = historyAt(o, 'delivered');
@@ -100,7 +103,7 @@ export const PAYOUT_CHIP: Record<PayoutStatus, string> = {
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   pending: 'New',
   confirmed: 'Confirmed',
-  ready_for_dispatch: 'Ready for dispatch',
+  ready_for_dispatch: 'Packed',
   shipped: 'Dispatched',
   delivered: 'Delivered',
   rejected: 'Rejected',
@@ -116,7 +119,8 @@ export function sellerOrders(orders: SalesOrder[], seller: Seller, products: Cat
   const mine = new Set(products.filter(p => seller.productIds.includes(p.id)).map(p => p.name));
   return orders
     .map(order => {
-      const items = order.items.filter(i => mine.has(i.product_name));
+      // The backend has already cut a live order down to this seller's lines, so trust it; only the offline sample needs the name filter.
+      const items = isLiveOrder(order) ? order.items : order.items.filter(i => mine.has(i.product_name));
       if (items.length === 0) return null;
       const gross = items.reduce((s, i) => s + i.price * i.quantity, 0);
       const commission = Math.round((gross * seller.commissionPct) / 100);
@@ -124,7 +128,7 @@ export function sellerOrders(orders: SalesOrder[], seller: Seller, products: Cat
         ? [...order.status_history].reverse().find(h => h.status === 'delivered')?.at ?? order.created_at
         : null;
       let payout: PayoutStatus;
-      if (order.status === 'cancelled' || order.payment_status === 'refunded') payout = 'None';
+      if (order.status === 'cancelled' || order.status === 'rejected' || order.payment_status === 'refunded') payout = 'None';
       else if (deliveredAt) payout = daysBefore(deliveredAt) >= seller.payoutAfterDays ? 'Paid out' : 'Due';
       else payout = 'On hold';
       return {

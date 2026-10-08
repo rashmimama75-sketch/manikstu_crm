@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Boxes, ImagePlus, LayoutDashboard, MapPin, ShoppingCart, Truck, Wallet } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
@@ -21,6 +21,10 @@ import type { Seller } from '../data/sellers';
 import { nowStamp } from '../lib/format';
 import { ManualStageAction, ORDER_STATUS_LABEL, ShipmentDetails, nextManualStep, sellerOrders, sellerTrackingFor } from './seller/sellerData';
 import type { SessionUser } from '../lib/session';
+import { isLiveOrder } from './telecaller/orderTracking';
+
+/** How often the seller's order list is re-read from the CRM, so new website orders and status changes appear without a reload. */
+const ORDER_REFRESH_MS = 15000;
 
 interface Props {
   user: SessionUser;
@@ -39,6 +43,22 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
 
   // Sample data, kept in this page for now: changes reset on refresh until the backend has sellers.
   const [orders, setOrders] = useState<SalesOrder[]>(initialOrders);
+  // Status changes in flight to the server. While any are, a refresh would read the old status back and undo the click.
+  const pendingSaves = useRef(0);
+  useEffect(() => {
+    const id = setInterval(async () => {
+      if (pendingSaves.current > 0 || document.hidden) return;
+      try {
+        const res = await fetch('/api/seller/orders', { cache: 'no-store' });
+        if (!res.ok) return; // offline demo or signed out: keep what is on screen
+        const body = await res.json();
+        if (pendingSaves.current === 0 && Array.isArray(body.data)) setOrders(body.data as SalesOrder[]);
+      } catch {
+        /* server briefly unreachable: try again next tick */
+      }
+    }, ORDER_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
   const [catalog, setCatalog] = useState<CatalogProduct[]>(initialProducts);
   // Product ids this seller owns; grows when they add a product.
   const [ownedIds, setOwnedIds] = useState<number[]>(seller.productIds);
@@ -52,7 +72,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
   const notifications = useMemo(() => {
     const list: { id: string; title: string; message: string; time: string; type: 'warning' | 'success' | 'info' }[] = [];
     const toConfirm = myOrders.filter(o => o.order.status === 'pending');
-    const toShip = myOrders.filter(o => o.order.status === 'confirmed');
+    const toShip = myOrders.filter(o => o.order.status === 'confirmed' || o.order.status === 'ready_for_dispatch');
     const outOfStock = myProducts.filter(p => p.is_active && p.stock_quantity === 0);
     const lowStock = myProducts.filter(p => p.is_active && p.stock_quantity > 0 && p.stock_quantity <= LOW_STOCK_LEVEL);
     const dueAmount = myOrders.filter(o => o.payout === 'Due').reduce((s, o) => s + o.net, 0);
@@ -82,6 +102,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     // was lost on the next refresh and dispatch was never really gated. Move
     // the row optimistically, then put it back if the server disagrees — it is
     // the backend that decides which transitions are legal.
+    pendingSaves.current += 1;
     void (async () => {
       try {
         const res = await fetch(`/api/seller/orders/${orderId}/status`, {
@@ -105,6 +126,8 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
             : o)));
         }
         showToast('Could not reach the server.');
+      } finally {
+        pendingSaves.current -= 1;
       }
     })();
     // Once shipped or delivered, the seller's next job is tracking the delivery, so take them
@@ -161,10 +184,17 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
       return;
     }
     const order = orders.find(o => o.id === orderId);
+    // Packing is a real status on live orders (ready for dispatch), saved to the server so every dashboard sees it.
+    if (action === 'packed' && order && isLiveOrder(order)) {
+      advanceOrder(orderId, 'ready_for_dispatch');
+      setActivePage('tracking');
+      setSearchQuery(order.order_number);
+      window.scrollTo(0, 0);
+      return;
+    }
     const field = action === 'packed' ? 'packedAt' : 'outForDeliveryAt';
     setShipmentDetails(prev => {
-      const existing = prev[orderId];
-      if (!existing) return prev;
+      const existing = prev[orderId] ?? { orderNo: '', trackingNo: '', confirmedAt: nowStamp() };
       return { ...prev, [orderId]: { ...existing, [field]: nowStamp() } };
     });
     if (order) showToast(`${order.order_number} marked ${action === 'packed' ? 'packed' : 'out for delivery'}`);
@@ -299,7 +329,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
 
   // Matches what the Orders page shows: new orders still waiting to be confirmed.
   const toConfirm = myOrders.filter(o => o.order.status === 'pending').length;
-  const toShip = myOrders.filter(o => o.order.status === 'confirmed').length;
+  const toShip = myOrders.filter(o => o.order.status === 'confirmed' || o.order.status === 'ready_for_dispatch').length;
   const lowStock = myProducts.filter(p => p.is_active && p.stock_quantity <= 20).length;
   const due = myOrders.filter(o => o.payout === 'Due').length;
   const lateShipments = useMemo(
@@ -309,7 +339,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
 
   const pageMeta: Record<string, { title: string; sub: string }> = {
     overview: { title: 'Seller Dashboard', sub: `Your sales on Manikstu, ${user.name.split(' ')[0]}: orders to ship, stock and earnings.` },
-    orders:   { title: 'Orders',           sub: 'New orders waiting to be confirmed. Once confirmed, follow them in Tracking.' },
+    orders:   { title: 'Orders',           sub: 'New orders to confirm or reject, and the orders you have already confirmed. Follow deliveries in Tracking.' },
     stock:    { title: 'Stock',            sub: 'What you have, what is promised to customers, how long it lasts and what to restock.' },
     tracking: { title: 'Tracking',         sub: 'Where each of your orders is: courier, tracking number, expected delivery and history.' },
     regional: { title: 'Regional Report',  sub: 'Where your products sell: orders and customers by state, district, town and PIN code.' },
@@ -382,6 +412,8 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               mixedOrderIds={mixedOrderIds}
               searchQuery={searchQuery}
               onOpenConfirm={openConfirmCard}
+              onReject={id => advanceOrder(id, 'rejected')}
+              onTrack={orderNumber => { setActivePage('tracking'); setSearchQuery(orderNumber); window.scrollTo(0, 0); }}
             />
           )}
           {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} onAddProduct={openAddProduct} />}

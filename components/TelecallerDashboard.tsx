@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  BarChart3, CalendarClock, Inbox, LayoutDashboard, MapPin, Megaphone, MessageSquareWarning, Package, TrendingUp, Truck, UserCheck, UserPlus, Users,
+  BarChart3, CalendarClock, Inbox, PhoneCall, LayoutDashboard, MapPin, Megaphone, MessageSquareWarning, Package, TrendingUp, Truck, UserCheck, UserPlus, Users,
 } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
@@ -21,8 +21,10 @@ import EnquiriesView from './views/EnquiriesView';
 import TeamReports from './telecaller/TeamReports';
 import TeamComplaints from './telecaller/TeamComplaints';
 import TeamOrders from './telecaller/TeamOrders';
+import OrderFollowUp from './orders/OrderFollowUp';
 import TeamInventory from './telecaller/TeamInventory';
 import { trackingFor } from './telecaller/orderTracking';
+import type { SalesOrder } from '../data/managerDashboard';
 import { Complaint, INITIAL_COMPLAINTS } from '../data/complaints';
 import { isUnassigned } from './telecaller/complaintsUtil';
 import {
@@ -98,6 +100,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     onboarding: { title: 'Staff Onboarding',     sub: 'Add telecalling staff and create their Staff ID and temporary password.' },
     inventory:  { title: 'Stock',                sub: 'What the team can sell today, what is running out and which customers are waiting.' },
     orders:     { title: 'Orders & Tracking',    sub: 'Review every order and where its parcel is, then keep the customer informed on WhatsApp or SMS.' },
+    'order-calls': { title: 'Order Follow-up', sub: 'Orders the seller has confirmed: call the customer, log how it went and book follow-ups.' },
     enquiries:  { title: 'Website Enquiries',    sub: 'Messages from the website contact form: reply, and assign them to a caller as leads.' },
     reports:    { title: 'Reports & Analytics',  sub: 'Generate and export telecalling, sales, order, stock and support reports as Excel or PDF.' },
     complaints: { title: 'Complaints',           sub: 'Assign each customer complaint to the right telecaller and see it through to resolution.' },
@@ -106,7 +109,25 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
 
   const overdueCount = followups.filter(isOverdue).length;
   const withInactive = todayStats.filter(s => !s.t.is_active).reduce((a, s) => a + s.openLeads, 0);
-  const lateOrders = useMemo(() => SALES_ORDERS.filter(o => trackingFor(o).delayed).length, []);
+  // Orders for the Orders & tracking page: the live ones from the CRM (seller-confirmed onwards, re-read every 15 s so new
+  // orders and status changes appear on their own), or the offline sample when there is no backend.
+  const [liveOrders, setLiveOrders] = useState<SalesOrder[] | null>(null);
+  useEffect(() => {
+    let stop = false;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/orders', { cache: 'no-store' });
+        if (!res.ok) return;
+        const body = await res.json();
+        if (!stop && Array.isArray(body.data)) setLiveOrders(body.data as SalesOrder[]);
+      } catch { /* try again next tick */ }
+    };
+    load();
+    const id = setInterval(() => { if (!document.hidden) load(); }, 15000);
+    return () => { stop = true; clearInterval(id); };
+  }, []);
+  const trackOrders = liveOrders ?? SALES_ORDERS;
+  const lateOrders = useMemo(() => trackOrders.filter(o => trackingFor(o).delayed).length, [trackOrders]);
   const toAssign = complaints.filter(isUnassigned).length;
 
   const navGroups: NavGroup[] = [
@@ -133,6 +154,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
       items: [
         { key: 'inventory', label: 'Stock', icon: Package },
         { key: 'orders', label: 'Orders & tracking', icon: Truck, count: lateOrders },
+        { key: 'order-calls', label: 'Order follow-up', icon: PhoneCall },
       ],
     },
     {
@@ -249,10 +271,10 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
             subtitle={currentMeta.sub}
             search={{
               query: searchQuery,
-              placeholder: activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'exec-reports' ? 'Search executives by name or region…' : activePage === 'orders' ? 'Search orders by name, phone, order no., AWB…' : 'Search leads by name or phone…',
+              placeholder: activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'exec-reports' ? 'Search executives by name or region…' : activePage === 'orders' || activePage === 'order-calls' ? 'Search orders by name, phone, order no.…' : 'Search leads by name or phone…',
               onChange: q => {
                 setSearchQuery(q);
-                if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'inventory' && activePage !== 'exec-reports') {
+                if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'order-calls' && activePage !== 'inventory' && activePage !== 'exec-reports') {
                   setActivePage('leads');
                   setFocusCaller(undefined);
                 }
@@ -301,7 +323,8 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
           )}
           {activePage === 'onboarding' && <StaffOnboarding onToast={showToast} />}
           {activePage === 'inventory' && <TeamInventory orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
-          {activePage === 'orders' && <TeamOrders orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
+          {activePage === 'orders' && <TeamOrders orders={trackOrders} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
+          {activePage === 'order-calls' && <OrderFollowUp searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'enquiries' && (
             <EnquiriesView
               enquiries={enquiries}

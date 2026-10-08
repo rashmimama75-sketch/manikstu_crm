@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { BarChart3, CalendarClock, History, LayoutDashboard, ListChecks } from 'lucide-react';
+import { BarChart3, CalendarClock, History, LayoutDashboard, ListChecks, PackageCheck } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
@@ -11,6 +11,7 @@ import CallHistoryView from './calling-executive/CallHistoryView';
 import CallbacksView from './calling-executive/CallbacksView';
 import CeFollowupsView from './calling-executive/CeFollowupsView';
 import CeReportsView from './calling-executive/CeReportsView';
+import OrderFollowUp from './orders/OrderFollowUp';
 import CallModal, { CallTarget, dial } from './calling-executive/CallModal';
 import { TODAY, TRACKER_SALES, CallOutcome } from '../data/managerDashboard';
 import { dayStart } from '../lib/format';
@@ -132,6 +133,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     callbacks: { title: 'Call Desk',    sub: 'Your assigned leads, calls made, pending calls and callbacks in one place.' },
     followups: { title: 'Follow-ups',   sub: 'Every callback you owe — overdue, due today and upcoming.' },
     reports:   { title: 'Reports',      sub: 'Your calling performance, and reports you can download as Excel or PDF.' },
+    'order-calls': { title: 'Order Calls', sub: 'Orders the seller has confirmed: call the customer, log how it went and book follow-ups.' },
   };
   const currentMeta = pageMeta[activePage] ?? pageMeta.overview;
 
@@ -143,6 +145,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
         { key: 'callbacks', label: 'Call desk', icon: CalendarClock, count: dueCallbacks },
         { key: 'followups', label: 'Follow-ups', icon: ListChecks, count: dueCallbacks },
         { key: 'history', label: 'Call history', icon: History },
+        { key: 'order-calls', label: 'Order calls', icon: PackageCheck },
       ],
     },
     { label: 'Performance', items: [{ key: 'reports', label: 'Reports', icon: BarChart3 }] },
@@ -165,7 +168,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           <Topbar
             title={currentMeta.title}
             subtitle={currentMeta.sub}
-            search={activePage === 'history' || activePage === 'callbacks' || activePage === 'followups'
+            search={activePage === 'history' || activePage === 'callbacks' || activePage === 'followups' || activePage === 'order-calls'
               ? { query: searchQuery, onChange: setSearchQuery, placeholder: 'Search by name, phone or note…' }
               : undefined}
             status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
@@ -194,6 +197,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
             />
           )}
           {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
+          {activePage === 'order-calls' && <OrderFollowUp searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'callbacks' && (
             <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} assignments={sync.data.assignments} searchQuery={searchQuery} onOpen={startCall} />
           )}
