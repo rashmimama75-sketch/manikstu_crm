@@ -12,3 +12,6 @@ public/pdf.worker.min.mjs
 # Local data: staff added on the Staff onboarding page (contains password hashes)
 # and the shared telecalling data (tracker.json) until the backend is connected
 .data/
+
+# Claude Code local tooling
+.claude/
