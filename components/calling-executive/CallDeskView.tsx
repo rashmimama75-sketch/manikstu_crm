@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Phone } from 'lucide-react';
-import { CALL_TARGET_DAILY, CallOutcome, Followup, LeadActivity, TODAY, Telecaller, TrackerLead } from '../../data/managerDashboard';
+import { CALL_TARGET_DAILY, CallOutcome, CustomerResponse, Followup, LeadActivity, TODAY, Telecaller, TrackerLead } from '../../data/managerDashboard';
 import { dayStart, pct, shortDateTime } from '../../lib/format';
 import { fmtDuration, stageName, time12, verticalName } from '../telecaller/tcData';
 import { QUEUE_CHIP, QueueItem } from './queue';
@@ -11,6 +11,8 @@ export interface CallForm {
   scheduleNext: boolean;
   nextDate: string;
   nextNote: string;
+  /** What the customer said: part of the call report, required when the customer was reached. */
+  customerResponse: CustomerResponse | '';
 }
 
 interface Props {

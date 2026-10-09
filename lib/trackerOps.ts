@@ -8,7 +8,8 @@
 
 import {
   FOLLOWUPS, LEAD_ACTIVITIES, STAGES, TELECALLERS, TRACKER_LEADS, VERTICALS, WEB_ENQUIRIES,
-  CallOutcome, EnquiryStatus, EnquiryType, Followup, LeadActivity, TrackerLead, WebEnquiry,
+  CUSTOMER_RESPONSES,
+  CallOutcome, CustomerResponse, EnquiryStatus, EnquiryType, Followup, LeadActivity, TrackerLead, WebEnquiry,
 } from '../data/managerDashboard';
 import { nowStamp } from './format';
 
@@ -69,6 +70,15 @@ export interface CallInput {
   next?: { date: string; note: string } | null;
   /** When the call happened (calling report import); defaults to now. */
   calledAt?: string | null;
+  /** What the customer said: required on the call report when the customer was reached. */
+  customerResponse?: CustomerResponse | null;
+}
+
+/** The part of a call report an executive can correct and submit again. */
+export interface ReportEdit {
+  activityId: number;
+  note?: string;
+  customerResponse?: CustomerResponse | null;
 }
 
 export type TrackerAction =
@@ -78,6 +88,10 @@ export type TrackerAction =
   | { type: 'log-call'; call: CallInput }
   | { type: 'import-report'; calls: CallInput[] }
   | { type: 'complete-followup'; followupId: number }
+  /** Spread uncalled leads evenly across the active executives (all of them when no ids are given). */
+  | { type: 'distribute'; leadIds?: number[] }
+  | { type: 'update-report'; report: ReportEdit }
+  | { type: 'verify-report'; activityIds: number[]; decision: 'verified' | 'returned'; note?: string | null }
   | { type: 'update-enquiries'; changes: { id: number; patch: EnquiryPatch }[] }
   | { type: 'import-enquiries'; enquiries: NewEnquiryData[] };
 
@@ -100,6 +114,9 @@ export const ALLOWED: Record<TrackerAction['type'], ActorRole[]> = {
   'log-call': ['calling-executive'],
   'import-report': ['calling-executive'],
   'complete-followup': ['calling-executive'],
+  distribute: ['telecaller', 'manager'],
+  'update-report': ['calling-executive'],
+  'verify-report': ['telecaller'],
   'update-enquiries': ['manager', 'telecaller'],
   'import-enquiries': ['manager', 'telecaller'],
 };
@@ -108,7 +125,7 @@ const ENQUIRY_TYPES: EnquiryType[] = ['sales', 'partnership', 'career', 'general
 
 const ENQUIRY_STATUSES: EnquiryStatus[] = ['new', 'read', 'replied', 'archived'];
 
-export const OUTCOME_LIST: CallOutcome[] = ['Connected', 'No answer', 'Busy', 'Wrong number'];
+export const OUTCOME_LIST: CallOutcome[] = ['Connected', 'No answer', 'Busy', 'Wrong number', 'Not interested'];
 const MAX_IMPORT = 500;
 
 export class TrackerError extends Error {}
@@ -152,11 +169,16 @@ function createLeads(state: TrackerState, inputs: NewLeadInput[]): TrackerLead[]
 }
 
 /** Adds one call to the state (activity, lead stage, follow-ups). Mutates the given arrays' copies. */
-function applyCall(state: TrackerState, call: CallInput, actor: Actor): string {
+function applyCall(state: TrackerState, call: CallInput, actor: Actor, needsReport = false): string {
   const lead = state.leads.find(l => l.id === Number(call.leadId));
   if (!lead) throw new TrackerError('That lead no longer exists.');
   if (lead.assigned_to !== actor.callerId) throw new TrackerError(`${lead.customer_name} is not assigned to you any more.`);
   if (!OUTCOME_LIST.includes(call.outcome)) throw new TrackerError('Choose a call outcome.');
+  // A call logged from the dashboard is also the call report: when the customer was reached it must say what they answered.
+  const response = String(call.customerResponse ?? '').trim();
+  if (response && !CUSTOMER_RESPONSES.includes(response as CustomerResponse)) throw new TrackerError('Choose the customer’s response from the list.');
+  if (needsReport && call.outcome === 'Connected' && !response) throw new TrackerError('Fill in the customer’s response to submit the call report.');
+  const nextDate = call.next?.date && /^\d{4}-\d{2}-\d{2}$/.test(call.next.date) ? call.next.date : null;
   const stage = STAGES.find(s => s.id === (call.stageId === null || call.stageId === undefined ? lead.stage_id : Number(call.stageId)));
   if (!stage || stage.vertical_id !== lead.vertical_id) throw new TrackerError(`Choose a status from ${lead.customer_name}'s product line.`);
 
@@ -175,6 +197,13 @@ function applyCall(state: TrackerState, call: CallInput, actor: Actor): string {
     outcome: call.outcome,
     duration_sec: call.outcome === 'Connected' ? duration : null,
     created_at: at,
+    customer_response: (response as CustomerResponse) || null,
+    followup_date: nextDate,
+    followup_note: nextDate ? String(call.next?.note ?? '').trim().slice(0, 200) || 'Call back' : null,
+    report_status: 'submitted',
+    verified_by: null,
+    verified_at: null,
+    verify_note: null,
   });
   if (at >= latest) lead.stage_id = stage.id;
   lead.updated_at = at > lead.updated_at ? at : lead.updated_at;
@@ -213,7 +242,7 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
     version: current.version + 1,
     leads: current.leads.map(l => ({ ...l })),
     followups: current.followups.map(f => ({ ...f })),
-    activities: [...current.activities],
+    activities: current.activities.map(a => ({ ...a })), // copies: report edits change rows in place
     assignments: { ...(current.assignments ?? {}) },
     enquiries: enquiriesOf(current).map(e => ({ ...e })),
   };
@@ -254,8 +283,62 @@ export function applyAction(current: TrackerState, action: TrackerAction, actor:
       return { state, message: `${moved.length === 1 ? moved[0].customer_name : `${moved.length} leads`} assigned to ${to.name}` };
     }
     case 'log-call': {
-      const name = applyCall(state, action.call, actor);
-      return { state, message: `${name}: ${action.call.outcome} saved` };
+      const name = applyCall(state, action.call, actor, true);
+      return { state, message: `${name}: ${action.call.outcome} saved and report submitted` };
+    }
+    case 'distribute': {
+      const execs = TELECALLERS.filter(t => t.is_active);
+      if (execs.length === 0) throw new TrackerError('There are no active calling executives to distribute to.');
+      const called = new Set(state.activities.map(a => a.lead_id));
+      const only = action.leadIds ? new Set(action.leadIds.map(Number)) : null;
+      const untouched = state.leads.filter(l => !called.has(l.id) && (!only || only.has(l.id))).sort((a, b) => a.id - b.id);
+      if (untouched.length === 0) throw new TrackerError('There are no uncalled leads to distribute.');
+      // Open workload now = uncalled leads each executive holds; the ones being re-dealt stop counting against their holder.
+      const load = new Map(execs.map(t => [t.id, state.leads.filter(l => l.assigned_to === t.id && !called.has(l.id)).length]));
+      untouched.forEach(l => { if (load.has(l.assigned_to)) load.set(l.assigned_to, load.get(l.assigned_to)! - 1); });
+      const now = stamp();
+      let moved = 0;
+      for (const lead of untouched) {
+        const [to] = Array.from(load.entries()).sort((a, b) => a[1] - b[1])[0];
+        if (lead.assigned_to !== to) {
+          lead.assigned_to = to;
+          lead.updated_at = now;
+          state.followups.forEach(f => { if (f.lead_id === lead.id && f.status !== 'done') { f.caller_id = to; f.status = 'pending'; } });
+          noteAssigned([lead.id]);
+          moved++;
+        }
+        load.set(to, load.get(to)! + 1);
+      }
+      return { state, message: `${untouched.length} uncalled leads spread across ${execs.length} executives (${moved} reassigned)` };
+    }
+    case 'update-report': {
+      const a = state.activities.find(x => x.id === Number(action.report?.activityId));
+      if (!a || a.caller_id !== actor.callerId) throw new TrackerError('That call report is not yours.');
+      if (a.report_status === 'verified') throw new TrackerError('A verified report can no longer be changed.');
+      const response = String(action.report.customerResponse ?? a.customer_response ?? '').trim();
+      if (response && !CUSTOMER_RESPONSES.includes(response as CustomerResponse)) throw new TrackerError('Choose the customer’s response from the list.');
+      if (a.outcome === 'Connected' && !response) throw new TrackerError('Fill in the customer’s response to submit the call report.');
+      const note = action.report.note === undefined ? '' : String(action.report.note).trim().slice(0, 500);
+      if (note) a.note = note;
+      a.customer_response = (response as CustomerResponse) || null;
+      a.report_status = 'submitted';
+      a.verified_by = null; a.verified_at = null; a.verify_note = null;
+      return { state, message: 'Call report submitted again' };
+    }
+    case 'verify-report': {
+      if (action.decision !== 'verified' && action.decision !== 'returned') throw new TrackerError('Choose verify or return.');
+      const note = action.note ? String(action.note).trim().slice(0, 300) : '';
+      if (action.decision === 'returned' && !note) throw new TrackerError('Say what needs correcting when sending a report back.');
+      const ids = new Set((action.activityIds ?? []).map(Number));
+      const found = state.activities.filter(a => ids.has(a.id));
+      if (found.length === 0) throw new TrackerError('Those reports no longer exist.');
+      const now = stamp();
+      found.forEach(a => {
+        a.report_status = action.decision;
+        a.verified_by = actor.name; a.verified_at = now;
+        a.verify_note = action.decision === 'returned' ? note : note || null;
+      });
+      return { state, message: `${found.length} call report${found.length === 1 ? '' : 's'} ${action.decision === 'verified' ? 'verified' : 'sent back'}` };
     }
     case 'import-report': {
       if (!Array.isArray(action.calls) || action.calls.length === 0) throw new TrackerError('The report has no calls to import.');

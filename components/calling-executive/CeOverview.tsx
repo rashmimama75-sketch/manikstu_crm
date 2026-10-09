@@ -8,7 +8,7 @@ import { OUTCOMES, TeamData, fmtDuration, isOpenLead, isOverdue, stageName, time
 import { CALL_TARGET_DAILY, callsPerDay, execMetrics, funnel } from '../views/telecallingMetrics';
 
 const OUTCOME_CHIP: Record<CallOutcome, string> = {
-  Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted',
+  Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted', 'Not interested': 'muted',
 };
 const HOURS = Array.from({ length: 10 }, (_, i) => 9 + i); // 9 AM – 6 PM
 const hour12 = (h: number) => `${((h + 11) % 12) + 1}${h < 12 ? 'a' : 'p'}`;

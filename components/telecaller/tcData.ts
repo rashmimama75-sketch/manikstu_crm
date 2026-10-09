@@ -32,7 +32,7 @@ export const isOpenLead = (l: TrackerLead) => {
 };
 export const isWonLead = (l: TrackerLead) => isWonStage(stageOf(l.stage_id));
 
-export const OUTCOMES: CallOutcome[] = ['Connected', 'No answer', 'Busy', 'Wrong number'];
+export const OUTCOMES: CallOutcome[] = ['Connected', 'No answer', 'Busy', 'Wrong number', 'Not interested'];
 
 export const time12 = (ts: string) => {
   const [h, m] = ts.slice(11, 16).split(':').map(Number);

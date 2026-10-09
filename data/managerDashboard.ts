@@ -27,7 +27,14 @@ export interface TrackerLead {
   updated_at: string;
 }
 
-export type CallOutcome = 'Connected' | 'No answer' | 'Busy' | 'Wrong number';
+export type CallOutcome = 'Connected' | 'No answer' | 'Busy' | 'Wrong number' | 'Not interested';
+
+/** What the customer said, on the call report. */
+export type CustomerResponse = 'Interested' | 'Wants more information' | 'Will order later' | 'Placed order' | 'Not interested' | 'No response';
+export const CUSTOMER_RESPONSES: CustomerResponse[] = ['Interested', 'Wants more information', 'Will order later', 'Placed order', 'Not interested', 'No response'];
+
+/** A call report is submitted with the call, then verified by the telecalling head or sent back to be corrected. */
+export type ReportStatus = 'submitted' | 'verified' | 'returned';
 
 /** A logged call (`tracker_lead_activities`). `outcome` and `duration_sec` are not in the backend yet. */
 export interface LeadActivity {
@@ -39,6 +46,14 @@ export interface LeadActivity {
   outcome: CallOutcome;
   duration_sec: number | null;
   created_at: string;
+  // The call report (CRM backend only; sample calls count as verified).
+  customer_response?: CustomerResponse | null;
+  followup_date?: string | null;
+  followup_note?: string | null;
+  report_status?: ReportStatus;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  verify_note?: string | null;
 }
 
 /** Call targets per telecaller. Not in the backend yet. */
@@ -272,6 +287,7 @@ const CALL_NOTES: Record<CallOutcome, string[]> = {
   'No answer': ['Not reachable', 'Rang out, will retry', 'No answer, try in the evening'],
   Busy: ['Line busy', 'Phone switched off'],
   'Wrong number': ['Wrong number, lead details need checking'],
+  'Not interested': ['Not interested right now', 'Already uses another product'],
 };
 
 function logCall(leadId: number, callerId: number, stageId: number, daysAgo: number, hour = int(9, 18)) {

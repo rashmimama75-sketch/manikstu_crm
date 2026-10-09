@@ -11,7 +11,7 @@ import {
 } from '../telecaller/tcData';
 import { CALL_TARGET_DAILY, ExecMetrics, allExecMetrics, callsPerDay, initials, teamAverage } from './telecallingMetrics';
 
-const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted' };
+const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted', 'Not interested': 'muted' };
 
 interface Props {
   data: TeamData;

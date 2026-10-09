@@ -10,7 +10,7 @@ import { QUEUE_CHIP, QueueItem } from './queue';
 
 type Sort = 'priority' | 'newest' | 'uncalled';
 const SORT_LABEL: Record<Sort, string> = { priority: 'Priority order', newest: 'Newest assigned', uncalled: 'Not called yet' };
-const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted' };
+const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted', 'Not interested': 'muted' };
 const initials = (name: string) => name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
 interface Props {

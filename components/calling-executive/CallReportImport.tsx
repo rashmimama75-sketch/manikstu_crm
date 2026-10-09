@@ -14,7 +14,7 @@ interface Props {
   onToast: (message: string) => void;
 }
 
-const CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted' };
+const CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted', 'Not interested': 'muted' };
 
 /** Import a calling report (Excel / CSV / PDF): each row becomes a call on one of your leads. */
 export default function CallReportImport({ leads, onImport, onToast }: Props) {

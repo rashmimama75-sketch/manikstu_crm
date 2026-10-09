@@ -13,6 +13,7 @@ export const OUTCOME_COLORS: Record<CallOutcome, string> = {
   'No answer': 'var(--gold)',
   Busy: 'var(--rust)',
   'Wrong number': 'var(--ink-soft)',
+  'Not interested': 'var(--clay, #8a6d4b)',
 };
 
 export type QueueReason = 'Overdue follow-up' | 'Follow-up today' | 'New lead' | 'Quiet 3+ days';

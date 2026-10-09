@@ -8,7 +8,7 @@ import Topbar from './Topbar';
 import Modal from './Modal';
 import NotificationsDrawer from './NotificationsDrawer';
 import { INITIAL_STOCK, StockRow, pointById, productById } from '../data/centralInventory';
-import { BarChart3, Headphones, LayoutDashboard, MapPin, PhoneCall, ShoppingCart, Sprout, Store, Users, Wallet, Warehouse } from 'lucide-react';
+import { BarChart3, ClipboardCheck, GitBranch, Headphones, LayoutDashboard, MapPin, PhoneCall, ShoppingCart, Sprout, Store, Users, Wallet, Warehouse } from 'lucide-react';
 
 // Views
 import DashboardView from './views/DashboardView';
@@ -22,6 +22,9 @@ import ReportsView from './views/ReportsView';
 import TelecallingOverviewView from './views/TelecallingOverviewView';
 import RegionalReportView from './views/RegionalReportView';
 import TelecallingExecutivesView from './views/TelecallingExecutivesView';
+import WorkflowBoard from './workflow/WorkflowBoard';
+import CallReportsView from './workflow/CallReportsView';
+import { reportStatusOf, workflowSummary } from '../lib/leadWorkflow';
 import { TeamData, staffStats, teamAlerts } from './telecaller/tcData';
 
 // Initial Data
@@ -105,6 +108,8 @@ export default function ManagerDashboard({
     () => teamAlerts(staffStats(telecallingData, 'today', 'all')).filter(a => a.level === 'critical').length,
     [telecallingData],
   );
+  // Pending assignments and reports the manager should look at (warnings and criticals).
+  const workflowAttention = useMemo(() => workflowSummary(sync.data).alerts.filter(a => a.level !== 'info').length, [sync.data]);
   // Website enquiries are shared with the telecalling head's Enquiries page (kept in sync with the server)
   const [webEnquiries, setWebEnquiries] = useSharedEnquiries(sync, msg => showToast(`⚠️ ${msg}`));
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
@@ -144,6 +149,8 @@ export default function ManagerDashboard({
     dashboard:       { title: "Manager Dashboard", sub: "Telecalling team, sales pipeline, website orders and enquiries at a glance." },
     orders:          { title: "Orders", sub: "Website and telecaller orders: status, payment and details. View only." },
     'tc-overview':   { title: "Telecalling · Team Overview", sub: "The whole telecalling team: calls, leads, follow-ups, sales and who needs a look." },
+    'tc-workflow':   { title: "Telecalling · Lead Workflow", sub: "Leads imported, distributed and called, executive-wise progress, and which assignments or reports are pending." },
+    'tc-reports':    { title: "Telecalling · Call Reports", sub: "The reports the executives submit after every call, and whether the telecalling head has verified them." },
     'tc-executives': { title: "Telecalling Executives", sub: "Every telecalling executive. Tap one to see their leads, calls, follow-ups and sales." },
     customers:       { title: "Farmer Network", sub: "Directory of farmers across Odisha with crop profiles and purchase history." },
     farmer:          { title: "Farmer Profile", sub: "Land holding, livestock breakdown, crops and past orders." },
@@ -305,6 +312,8 @@ export default function ManagerDashboard({
       items: [
         { key: 'tc-overview', label: 'Team overview', icon: Headphones, count: telecallingAlerts },
         { key: 'tc-executives', label: 'Telecalling executives', icon: PhoneCall },
+        { key: 'tc-workflow', label: 'Lead workflow', icon: GitBranch, count: workflowAttention },
+        { key: 'tc-reports', label: 'Call reports', icon: ClipboardCheck, count: sync.data.activities.filter(a => reportStatusOf(a) === 'submitted').length },
       ],
     },
     {
@@ -387,6 +396,9 @@ export default function ManagerDashboard({
               initialQuery={searchSeed?.page === 'orders' ? searchSeed.query : undefined}
             />
           )}
+
+          {activePage === 'tc-workflow' && <WorkflowBoard data={sync.data} audience="manager" />}
+          {activePage === 'tc-reports' && <CallReportsView data={sync.data} canVerify={false} />}
 
           {activePage === 'regional' && (
             <RegionalReportView

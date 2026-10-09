@@ -6,7 +6,7 @@ import ExportMenu from '../ExportMenu';
 import { TeamData, callerName, fmtDuration, isOpenLead, isOverdue, isWonLead, stageName, time12, verticalName } from '../telecaller/tcData';
 
 const PAGE_SIZE = 15;
-const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted' };
+const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted', 'Not interested': 'muted' };
 type LeadFilter = 'all' | 'open' | 'won' | 'lost' | 'never' | 'overdue';
 const FILTER_LABEL: Record<LeadFilter, string> = { all: 'All leads', open: 'Open', won: 'Won', lost: 'Lost', never: 'Never called', overdue: 'Follow-up overdue' };
 

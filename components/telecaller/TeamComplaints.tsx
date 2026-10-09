@@ -32,14 +32,14 @@ const inTab = (c: Complaint, t: Tab): boolean => {
   }
 };
 
-const inactiveIds = new Set(TELECALLERS.filter(t => !t.is_active).map(t => t.id));
+const isInactiveId = (id: number) => TELECALLERS.some(t => t.id === id && !t.is_active); // looked up per call: the executives can be swapped for the backend's
 const lastEventAt = (c: Complaint) => c.events[c.events.length - 1]?.at ?? c.created_at;
 
 /** "Needs action" shortcuts above the table. */
 const ATTENTION: { key: string; label: string; test: (c: Complaint) => boolean }[] = [
   { key: 'returned', label: 'Returned to you', test: c => isUnassigned(c) && !!c.returned_note },
   { key: 'overdue', label: 'Past deadline', test: c => isOverdue(c) },
-  { key: 'inactive', label: 'With inactive staff', test: c => isActive(c) && typeof c.assigned_to === 'number' && inactiveIds.has(c.assigned_to) },
+  { key: 'inactive', label: 'With inactive staff', test: c => isActive(c) && typeof c.assigned_to === 'number' && isInactiveId(c.assigned_to) },
   { key: 'waiting', label: 'Waiting 2+ days', test: c => c.status === 'waiting' && daysBefore(lastEventAt(c)) >= 2 },
   { key: 'reopened', label: 'Reopened', test: c => isActive(c) && c.reopened },
   { key: 'escalated', label: 'Escalated', test: c => c.status === 'escalated' },
@@ -409,7 +409,7 @@ export default function TeamComplaints({ complaints, onComplaintsChange, headNam
               {rows.length === 0 && <EmptyRow cols={9} text={attn ? `Nothing ${attn.label.toLowerCase()}.` : `No ${tab === 'All' ? '' : tab.toLowerCase() + ' '}complaints.`} />}
               {rows.map(c => {
                 const dl = deadlineText(c, now);
-                const withInactive = typeof c.assigned_to === 'number' && inactiveIds.has(c.assigned_to) && isActive(c);
+                const withInactive = typeof c.assigned_to === 'number' && isInactiveId(c.assigned_to) && isActive(c);
                 return (
                   <tr key={c.id} className={`clickable ${selected.has(c.id) ? 'row-selected' : ''}`} onClick={() => setOpenId(c.id)}>
                     <td onClick={e => e.stopPropagation()}>

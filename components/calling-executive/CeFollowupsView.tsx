@@ -15,7 +15,7 @@ const BUCKET_STYLE: Record<Bucket, { cls: string; Icon: typeof Clock }> = {
   week: { cls: 'g-soon', Icon: CalendarDays },
   later: { cls: 'g-soon', Icon: CalendarDays },
 };
-const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted' };
+const OUTCOME_CHIP: Record<string, string> = { Connected: 'delivered', 'No answer': 'transit', Busy: 'pending', 'Wrong number': 'muted', 'Not interested': 'muted' };
 
 const bucketOf = (f: Followup): Bucket => {
   const due = dayStart(f.due_at);

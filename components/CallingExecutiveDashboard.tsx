@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { BarChart3, CalendarClock, History, LayoutDashboard, ListChecks, PackageCheck } from 'lucide-react';
+import { BarChart3, CalendarClock, ClipboardCheck, History, LayoutDashboard, ListChecks, PackageCheck } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
@@ -12,8 +12,10 @@ import CallbacksView from './calling-executive/CallbacksView';
 import CeFollowupsView from './calling-executive/CeFollowupsView';
 import CeReportsView from './calling-executive/CeReportsView';
 import OrderFollowUp from './orders/OrderFollowUp';
+import MyReports from './workflow/MyReports';
+import { reportStatusOf } from '../lib/leadWorkflow';
 import CallModal, { CallTarget, dial } from './calling-executive/CallModal';
-import { TODAY, TRACKER_SALES, CallOutcome } from '../data/managerDashboard';
+import { TODAY, TRACKER_SALES, CallOutcome, CustomerResponse } from '../data/managerDashboard';
 import { dayStart } from '../lib/format';
 import type { CallInput, TrackerState } from '../lib/trackerOps';
 import { useTracker } from '../lib/useTracker';
@@ -34,6 +36,7 @@ const emptyForm = (stageId: number, nextNote = ''): CallForm => ({
   scheduleNext: false,
   nextDate: tomorrow(),
   nextNote,
+  customerResponse: '',
 });
 
 export default function CallingExecutiveDashboard({ user, tracker }: { user: SessionUser; tracker: TrackerState }) {
@@ -80,6 +83,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
       outcome,
       stageId: form.stageId,
       note: form.note,
+      customerResponse: form.customerResponse || null,
       durationSec,
       followupId: followup?.id ?? null,
       next: form.scheduleNext && form.nextDate ? { date: form.nextDate, note: form.nextNote } : null,
@@ -114,6 +118,12 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     else showToast('No leads waiting to be called right now');
   };
 
+  /** The executive corrects a call report (usually one sent back) and submits it again. Errors go to the form. */
+  const resubmitReport = async (activityId: number, note: string, response: CustomerResponse | null) => {
+    const { message } = await sync.run({ type: 'update-report', report: { activityId, note, customerResponse: response } });
+    showToast(message);
+  };
+
   const completeFollowup = async (followupId: number) => {
     try {
       const { message } = await sync.run({ type: 'complete-followup', followupId });
@@ -133,6 +143,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     callbacks: { title: 'Call Desk',    sub: 'Your assigned leads, calls made, pending calls and callbacks in one place.' },
     followups: { title: 'Follow-ups',   sub: 'Every callback you owe — overdue, due today and upcoming.' },
     reports:   { title: 'Reports',      sub: 'Your calling performance, and reports you can download as Excel or PDF.' },
+    'my-reports': { title: 'My Call Reports', sub: 'The report you submit with every call, and whether the telecalling head has verified it or sent it back.' },
     'order-calls': { title: 'Order Calls', sub: 'Orders the seller has confirmed: call the customer, log how it went and book follow-ups.' },
   };
   const currentMeta = pageMeta[activePage] ?? pageMeta.overview;
@@ -145,6 +156,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
         { key: 'callbacks', label: 'Call desk', icon: CalendarClock, count: dueCallbacks },
         { key: 'followups', label: 'Follow-ups', icon: ListChecks, count: dueCallbacks },
         { key: 'history', label: 'Call history', icon: History },
+        { key: 'my-reports', label: 'My call reports', icon: ClipboardCheck, count: myActivities.filter(a => reportStatusOf(a) === 'returned').length },
         { key: 'order-calls', label: 'Order calls', icon: PackageCheck },
       ],
     },
@@ -168,7 +180,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           <Topbar
             title={currentMeta.title}
             subtitle={currentMeta.sub}
-            search={activePage === 'history' || activePage === 'callbacks' || activePage === 'followups' || activePage === 'order-calls'
+            search={activePage === 'history' || activePage === 'callbacks' || activePage === 'followups' || activePage === 'order-calls' || activePage === 'my-reports'
               ? { query: searchQuery, onChange: setSearchQuery, placeholder: 'Search by name, phone or note…' }
               : undefined}
             status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
@@ -198,6 +210,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           )}
           {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
           {activePage === 'order-calls' && <OrderFollowUp searchQuery={searchQuery} onToast={showToast} />}
+          {activePage === 'my-reports' && <MyReports leads={myLeads} activities={myActivities} searchQuery={searchQuery} onResubmit={resubmitReport} />}
           {activePage === 'callbacks' && (
             <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} assignments={sync.data.assignments} searchQuery={searchQuery} onOpen={startCall} />
           )}

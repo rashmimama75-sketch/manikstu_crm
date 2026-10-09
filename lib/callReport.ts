@@ -54,6 +54,7 @@ const SKIP_HEADER = /current|old|previous|product|vertical|source/i;
 export function parseOutcome(text: string): CallOutcome | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
+  if (/not.?interested|no.?interest|don.?t want|do not want|refus/.test(t)) return 'Not interested';
   if (/wrong|invalid|incorrect|not exist|does ?n.?t exist/.test(t)) return 'Wrong number';
   if (/no.?answer|not.?answer|unanswer|no.?response|not.?pick|didn.?t pick|not.?reach|unreach|switch|ring|rnr|^na$|not.?connect|no.?reply/.test(t)) return 'No answer';
   if (/busy|engaged|call.?later|disconnect|cut/.test(t)) return 'Busy';
@@ -204,7 +205,7 @@ export async function downloadReportTemplate(leads: TrackerLead[], stageName: (i
   const list = (values: string[]) => ({ type: 'list' as const, allowBlank: true, formulae: [`"${values.join(',')}"`] });
   const stageNames = Array.from(new Set(STAGES.map(s => s.name)));
   for (let r = 2; r <= Math.max(50, leads.length + 20); r++) {
-    ws.getCell(`F${r}`).dataValidation = list(['Connected', 'No answer', 'Busy', 'Wrong number']);
+    ws.getCell(`F${r}`).dataValidation = list(['Connected', 'No answer', 'Busy', 'Wrong number', 'Not interested']);
     ws.getCell(`G${r}`).dataValidation = list(stageNames);
   }
   ws.views = [{ state: 'frozen', ySplit: 1 }];

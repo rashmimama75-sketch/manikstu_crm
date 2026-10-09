@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  BarChart3, CalendarClock, Inbox, PhoneCall, LayoutDashboard, MapPin, Megaphone, MessageSquareWarning, Package, TrendingUp, Truck, UserCheck, UserPlus, Users,
+  BarChart3, CalendarClock, ClipboardCheck, Inbox, PhoneCall, Share2, LayoutDashboard, MapPin, Megaphone, MessageSquareWarning, Package, TrendingUp, Truck, UserCheck, UserPlus, Users,
 } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
@@ -22,6 +22,9 @@ import TeamReports from './telecaller/TeamReports';
 import TeamComplaints from './telecaller/TeamComplaints';
 import TeamOrders from './telecaller/TeamOrders';
 import OrderFollowUp from './orders/OrderFollowUp';
+import WorkflowBoard from './workflow/WorkflowBoard';
+import CallReportsView from './workflow/CallReportsView';
+import { reportStatusOf, workflowSummary } from '../lib/leadWorkflow';
 import TeamInventory from './telecaller/TeamInventory';
 import { trackingFor } from './telecaller/orderTracking';
 import type { SalesOrder } from '../data/managerDashboard';
@@ -100,6 +103,8 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     onboarding: { title: 'Staff Onboarding',     sub: 'Add telecalling staff and create their Staff ID and temporary password.' },
     inventory:  { title: 'Stock',                sub: 'What the team can sell today, what is running out and which customers are waiting.' },
     orders:     { title: 'Orders & Tracking',    sub: 'Review every order and where its parcel is, then keep the customer informed on WhatsApp or SMS.' },
+    distribution: { title: 'Lead Distribution', sub: 'Imported leads, who each one is assigned to, whether they are being called, and which reports are pending.' },
+    'call-reports': { title: 'Call Reports', sub: 'The report each executive submits after every call: verify it, or send it back with what needs correcting.' },
     'order-calls': { title: 'Order Follow-up', sub: 'Orders the seller has confirmed: call the customer, log how it went and book follow-ups.' },
     enquiries:  { title: 'Website Enquiries',    sub: 'Messages from the website contact form: reply, and assign them to a caller as leads.' },
     reports:    { title: 'Reports & Analytics',  sub: 'Generate and export telecalling, sales, order, stock and support reports as Excel or PDF.' },
@@ -129,6 +134,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
   const trackOrders = liveOrders ?? SALES_ORDERS;
   const lateOrders = useMemo(() => trackOrders.filter(o => trackingFor(o).delayed).length, [trackOrders]);
   const toAssign = complaints.filter(isUnassigned).length;
+  const workflowAlerts = useMemo(() => workflowSummary(sync.data).alerts.filter(a => a.owner === 'head' || a.level !== 'info').length, [sync.data]);
 
   const navGroups: NavGroup[] = [
     { label: 'Overview', items: [{ key: 'overview', label: 'Team overview', icon: LayoutDashboard, count: alerts.filter(a => a.level === 'critical').length }] },
@@ -136,6 +142,8 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
       label: 'Team',
       items: [
         { key: 'leads', label: 'Leads & assignment', icon: Users, count: withInactive },
+        { key: 'distribution', label: 'Lead distribution', icon: Share2, count: workflowAlerts },
+        { key: 'call-reports', label: 'Call reports', icon: ClipboardCheck, count: sync.data.activities.filter(a => reportStatusOf(a) === 'submitted').length },
         { key: 'followups', label: 'Follow-ups', icon: CalendarClock, count: overdueCount },
         { key: 'exec-reports', label: 'Executive reports', icon: UserCheck },
         { key: 'onboarding', label: 'Staff onboarding', icon: UserPlus },
@@ -173,6 +181,22 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     if (page === 'exec-reports') setReportExec(callerId ?? null);
     setSearchQuery('');
     window.scrollTo(0, 0);
+  };
+
+  /** Spread the leads nobody has called yet evenly across the active executives. */
+  const distributeLeads = async () => {
+    try {
+      const { message } = await sync.run({ type: 'distribute' });
+      showToast(message);
+    } catch (e) {
+      showToast(`⚠️ ${(e as Error).message}`);
+    }
+  };
+
+  /** Verify call reports, or send them back to the executive with a reason. Errors go to the reports page. */
+  const verifyReports = async (activityIds: number[], decision: 'verified' | 'returned', note?: string) => {
+    const { message } = await sync.run({ type: 'verify-report', activityIds, decision, note });
+    showToast(message);
   };
 
   /** Move leads (and their pending follow-ups) to another telecaller. */
@@ -271,10 +295,10 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
             subtitle={currentMeta.sub}
             search={{
               query: searchQuery,
-              placeholder: activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'exec-reports' ? 'Search executives by name or region…' : activePage === 'orders' || activePage === 'order-calls' ? 'Search orders by name, phone, order no.…' : 'Search leads by name or phone…',
+              placeholder: activePage === 'complaints' ? 'Search complaints by name, phone, ticket…' : activePage === 'inventory' ? 'Search products…' : activePage === 'exec-reports' ? 'Search executives by name or region…' : activePage === 'orders' || activePage === 'order-calls' ? 'Search orders by name, phone, order no.…' : activePage === 'distribution' || activePage === 'call-reports' ? 'Search by customer, phone or executive…' : 'Search leads by name or phone…',
               onChange: q => {
                 setSearchQuery(q);
-                if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'order-calls' && activePage !== 'inventory' && activePage !== 'exec-reports') {
+                if (activePage !== 'leads' && activePage !== 'followups' && activePage !== 'complaints' && activePage !== 'orders' && activePage !== 'order-calls' && activePage !== 'distribution' && activePage !== 'call-reports' && activePage !== 'inventory' && activePage !== 'exec-reports') {
                   setActivePage('leads');
                   setFocusCaller(undefined);
                 }
@@ -325,6 +349,8 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
           {activePage === 'inventory' && <TeamInventory orders={SALES_ORDERS} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'orders' && <TeamOrders orders={trackOrders} complaints={complaints} searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'order-calls' && <OrderFollowUp searchQuery={searchQuery} onToast={showToast} />}
+          {activePage === 'distribution' && <WorkflowBoard data={sync.data} audience="head" searchQuery={searchQuery} onDistribute={distributeLeads} onOpenReports={() => handleNavigate('call-reports')} />}
+          {activePage === 'call-reports' && <CallReportsView data={sync.data} canVerify searchQuery={searchQuery} onVerify={verifyReports} />}
           {activePage === 'enquiries' && (
             <EnquiriesView
               enquiries={enquiries}
