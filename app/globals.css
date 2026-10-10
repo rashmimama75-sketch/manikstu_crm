@@ -1067,6 +1067,8 @@ td .chip { text-transform: capitalize; }
 .source-tag.telecaller { color: var(--gold); background: #FCEFD8; border-color: transparent; }
 .pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; font-size: 12.5px; color: var(--ink-soft); flex-wrap: wrap; }
 .pager-btns { display: flex; gap: 8px; }
+.pager-btns.exec-pages { flex-wrap: wrap; }
+.pager-btns.exec-pages .btn-small { min-width: 32px; padding-left: 0; padding-right: 0; text-align: center; }
 .btn-secondary:disabled { opacity: 0.45; cursor: default; }
 .btn-secondary.danger { color: var(--rust); }
 .btn-secondary.danger:hover { border-color: var(--rust); }

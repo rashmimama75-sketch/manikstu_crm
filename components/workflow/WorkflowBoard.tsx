@@ -56,7 +56,7 @@ export default function WorkflowBoard({ data, audience, onDistribute, onOpenRepo
     <>
       <div className="scoreboard">
         <div className="score"><div className="num"><Upload size={16} /> {summary.imported}</div><div className="label">Leads imported</div></div>
-        <div className="score"><div className="num"><Share2 size={16} /> {summary.distributed}{summary.withoutOwner > 0 && <small className="warn">{summary.withoutOwner} with inactive staff</small>}</div><div className="label">Distributed to executives</div></div>
+        <div className="score"><div className="num"><Share2 size={16} /> {summary.distributed}{summary.withoutOwner > 0 && <small className="warn">{summary.withoutOwner} unassigned or inactive</small>}</div><div className="label">Distributed to executives</div></div>
         <div className="score"><div className="num"><Users size={16} /> {summary.notCalled}</div><div className="label">Pending · not called yet</div></div>
         <div className="score"><div className="num"><PhoneCall size={16} /> {summary.completedCalls}</div><div className="label">Calls completed</div></div>
         <div className="score"><div className="num"><ClipboardCheck size={16} /> {summary.reportsSubmitted}</div><div className="label">Reports submitted</div></div>
@@ -92,62 +92,6 @@ export default function WorkflowBoard({ data, audience, onDistribute, onOpenRepo
             </li>
           ))}
         </ul>
-      </div>
-
-      {/* Executive-wise distribution and performance */}
-      <div className="panel">
-        <div className="table-wrap">
-          <table>
-            <caption style={{ textAlign: 'left', fontWeight: 600, padding: '10px 14px' }}>Executive-wise distribution and progress</caption>
-            <thead>
-              <tr>
-                <th>Executive</th><th className="num-col">Assigned</th><th className="num-col">Not called</th><th>Progress</th>
-                <th className="num-col">Calls</th><th className="num-col">Connected</th><th className="num-col">Not connected</th>
-                <th className="num-col">Wrong no.</th><th className="num-col">Not interested</th>
-                <th className="num-col">Reports sent</th><th className="num-col">To verify</th><th className="num-col">Verified</th><th className="num-col">Returned</th><th>Last call</th>
-              </tr>
-            </thead>
-            <tbody>
-              {execRows.map(e => (
-                <tr key={e.id} style={{ cursor: 'pointer' }} onClick={() => { setExec(exec === e.id ? 'all' : e.id); setPage(0); }} title="Show this executive's leads below">
-                  <td className="cust">{e.name}{!e.active && <div className="loc">Inactive</div>}</td>
-                  <td className="num-col strong">{e.assigned}</td>
-                  <td className="num-col">{e.notCalled > 0 ? <span className="text-warn">{e.notCalled}</span> : 0}</td>
-                  <td style={{ minWidth: 110 }}>
-                    <div style={{ background: 'var(--line)', borderRadius: 4, height: 6 }}><div style={{ width: `${e.progressPct}%`, height: 6, borderRadius: 4, background: 'var(--leaf)' }} /></div>
-                    <div className="loc">{e.progressPct}% called</div>
-                  </td>
-                  <td className="num-col">{e.calls}</td>
-                  <td className="num-col">{e.connected}</td>
-                  <td className="num-col">{e.notConnected}</td>
-                  <td className="num-col">{e.wrongNumber}</td>
-                  <td className="num-col">{e.notInterested}</td>
-                  <td className="num-col">{e.calls}</td>
-                  <td className="num-col">{e.awaiting > 0 ? <span className="text-warn">{e.awaiting}</span> : 0}</td>
-                  <td className="num-col">{e.verified}</td>
-                  <td className="num-col">{e.returned > 0 ? <span className="text-warn">{e.returned}</span> : 0}</td>
-                  <td>{e.lastCallAt ? <span className="loc">{ago(e.lastCallAt)}</span> : <span className="loc">No calls yet</span>}</td>
-                </tr>
-              ))}
-              <tr>
-                <td className="strong">Team</td>
-                <td className="num-col strong">{summary.distributed}</td>
-                <td className="num-col strong">{summary.notCalled}</td>
-                <td />
-                <td className="num-col strong">{summary.completedCalls}</td>
-                <td className="num-col strong">{execRows.reduce((n, e) => n + e.connected, 0)}</td>
-                <td className="num-col strong">{execRows.reduce((n, e) => n + e.notConnected, 0)}</td>
-                <td className="num-col strong">{execRows.reduce((n, e) => n + e.wrongNumber, 0)}</td>
-                <td className="num-col strong">{execRows.reduce((n, e) => n + e.notInterested, 0)}</td>
-                <td className="num-col strong">{summary.reportsSubmitted}</td>
-                <td className="num-col strong">{summary.awaitingVerification}</td>
-                <td className="num-col strong">{summary.verified}</td>
-                <td className="num-col strong">{summary.returned}</td>
-                <td />
-              </tr>
-            </tbody>
-          </table>
-        </div>
       </div>
 
       {/* Lead-by-lead workflow status */}

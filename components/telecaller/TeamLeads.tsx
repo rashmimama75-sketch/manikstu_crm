@@ -6,13 +6,16 @@ import Modal from '../Modal';
 import ImportLeads, { NewLead } from './ImportLeads';
 import { EmptyRow, StatusChip } from './shared';
 import { TeamData, callerOf, callerName, isOpenLead, isWonLead, lastCallFor, stageName, stageOf } from './tcData';
-import { initials } from '../views/telecallingMetrics';
+import ExecDistributionTable from './ExecDistributionTable';
+import type { WorkflowSummary } from '../../lib/leadWorkflow';
 
 type Tab = 'open' | 'new-imports' | 'untouched' | 'completed' | 'all';
 const PAGE_SIZE = 20;
 
 interface Props {
   data: TeamData;
+  /** Executive-wise distribution and progress, worked out from the shared tracker data. */
+  execSummary: WorkflowSummary;
   searchQuery: string;
   initialCaller?: number;
   onReassign: (leadIds: number[], toCallerId: number) => void | Promise<void>;
@@ -21,7 +24,7 @@ interface Props {
 }
 
 /** Import leads and hand them out to the calling executives. */
-export default function TeamLeads({ data, searchQuery, initialCaller, onReassign, onImport, onToast }: Props) {
+export default function TeamLeads({ data, execSummary, searchQuery, initialCaller, onReassign, onImport, onToast }: Props) {
   const [importOpen, setImportOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('open');
   const [caller, setCaller] = useState<number | 'all'>(initialCaller ?? 'all');
@@ -73,16 +76,6 @@ export default function TeamLeads({ data, searchQuery, initialCaller, onReassign
 
   // Workload of each calling executive
   const openOf = (id: number) => data.leads.filter(l => l.assigned_to === id && isOpenLead(l));
-  const board = TELECALLERS.map(t => {
-    const open = openOf(t.id);
-    return {
-      t,
-      open: open.length,
-      newToday: data.leads.filter(l => l.assigned_to === t.id && l.created_at.startsWith(TODAY)).length,
-      stale: open.filter(l => daysBefore(l.updated_at) >= 3).length,
-    };
-  }).sort((a, b) => Number(b.t.is_active) - Number(a.t.is_active));
-  const maxOpen = Math.max(1, ...board.map(b => b.open));
   const active = TELECALLERS.filter(t => t.is_active);
 
   const assignTo = async (ids: number[], to: number) => {
@@ -116,14 +109,6 @@ export default function TeamLeads({ data, searchQuery, initialCaller, onReassign
       onToast(`${ids.length} leads shared: ${Array.from(plan).map(([to, l]) => `${callerName(to).split(' ')[0]} ${l.length}`).join(', ')}`);
     } finally { setBusy(false); }
     setSelected(new Set());
-  };
-
-  /** Pick every open lead of one executive, ready to move. */
-  const selectAllOf = (id: number) => {
-    setTab('open');
-    setCaller(id);
-    setPage(0);
-    setSelected(new Set(openOf(id).map(l => l.id)));
   };
 
   const createImported = (newLeads: NewLead[]) => {
@@ -169,44 +154,8 @@ export default function TeamLeads({ data, searchQuery, initialCaller, onReassign
           </div>
         </div>
 
-        {/* Distribution board */}
-        <div className="panel">
-          <div className="panel-head">
-            <h2>Calling executives</h2>
-            <span className="panel-meta">open leads each · click to see their leads</span>
-          </div>
-          <div className="exec-board">
-            {board.map(({ t, open, newToday, stale }) => (
-              <div
-                key={t.id}
-                className={`exec-load ${caller === t.id ? 'active' : ''} ${t.is_active ? '' : 'inactive'}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => { setCaller(caller === t.id ? 'all' : t.id); reset(); }}
-                onKeyDown={e => { if (e.key === 'Enter') { setCaller(caller === t.id ? 'all' : t.id); reset(); } }}
-              >
-                <div className="exec-load-top">
-                  <div className="avatar">{initials(t.name)}</div>
-                  <div className="exec-load-who">
-                    <div className="exec-load-name">{t.name}</div>
-                    <div className="loc">{t.region}{!t.is_active && <> · <span className="chip muted">Inactive</span></>}</div>
-                  </div>
-                  <div className="exec-load-num">{open}</div>
-                </div>
-                <div className="exec-load-bar"><span style={{ width: `${(open / maxOpen) * 100}%` }} /></div>
-                <div className="exec-load-meta">
-                  <span>+{newToday} today</span>
-                  <span className={stale ? 'text-warn' : undefined}>{stale} untouched 3+ days</span>
-                </div>
-                {!t.is_active && open > 0 && (
-                  <button className="btn-secondary btn-small exec-load-move" onClick={e => { e.stopPropagation(); selectAllOf(t.id); }}>
-                    Move their {open} leads
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* Executive-wise distribution and progress */}
+        <ExecDistributionTable summary={execSummary} onSelectExec={id => { setCaller(caller === id ? 'all' : id); reset(); }} />
       </div>
 
       {/* One filter menu, with the active filters as removable tags */}

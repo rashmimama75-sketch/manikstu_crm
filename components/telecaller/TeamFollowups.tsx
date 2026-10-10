@@ -1,14 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CalendarCheck, CalendarClock, CalendarDays, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
-import { TELECALLERS, TODAY, Followup } from '../../data/managerDashboard';
-import { ago, dayStart, shortDate, shortDateTime } from '../../lib/format';
+import { TELECALLERS, TODAY, Followup, TrackerLead } from '../../data/managerDashboard';
+import { ago, dayStart, daysBefore, shortDate, shortDateTime } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
 import ExportMenu from '../ExportMenu';
 import { EmptyRow, StatusChip } from './shared';
-import { TeamData, callerName, isOverdue, lastCallFor, stageName, time12 } from './tcData';
+import { TeamData, UNASSIGNED_STALE_DAYS, UNCALLED_STALE_DAYS, callerName, isOpenLead, isOverdue, lastCallFor, stageName, time12 } from './tcData';
 import { initials } from '../views/telecallingMetrics';
 
 type Tab = 'Overdue' | 'Due today' | 'Upcoming' | 'Done' | 'All';
+
+/**
+ * One row of the Follow-up list. A scheduled callback the executive booked, or a
+ * lead surfaced automatically because it is stuck: unassigned too long, or assigned
+ * but never called. The stuck ones always count as Overdue.
+ */
+type FollowRow =
+  | { kind: 'followup'; key: string; tab: Exclude<Tab, 'All'>; sortAt: string; f: Followup; lead?: TrackerLead }
+  | { kind: 'unassigned'; key: string; tab: 'Overdue'; sortAt: string; lead: TrackerLead; days: number }
+  | { kind: 'uncalled'; key: string; tab: 'Overdue'; sortAt: string; lead: TrackerLead; days: number };
 const STATUS: { key: Tab; hint: string }[] = [
   { key: 'Overdue', hint: 'Missed or past their date' },
   { key: 'Due today', hint: 'Callbacks promised for today' },
@@ -51,17 +61,44 @@ export default function TeamFollowups({ data, searchQuery, initialCaller, onReas
 
   const leadOf = (id: number) => data.leads.find(l => l.id === id);
   const scoped = data.followups.filter(f => caller === 'all' || f.caller_id === caller);
-  const countOf = (t: Tab) => (t === 'All' ? scoped.length : scoped.filter(f => tabOf(f) === t).length);
   const doneToday = scoped.filter(f => f.status === 'done' && f.completed_at?.startsWith(TODAY)).length;
 
+  // Leads surfaced automatically so none is missed: unassigned too long, or assigned
+  // but never called. Both always count as Overdue.
+  const calledIds = new Set(data.activities.map(a => a.lead_id));
+  const stuckAll: FollowRow[] = [];
+  for (const l of data.leads) {
+    if (l.assigned_to === 0) {
+      const days = daysBefore(l.created_at);
+      if (days >= UNASSIGNED_STALE_DAYS) stuckAll.push({ kind: 'unassigned', key: `u${l.id}`, tab: 'Overdue', sortAt: l.created_at, lead: l, days });
+    } else if (isOpenLead(l) && !calledIds.has(l.id)) {
+      const days = daysBefore(l.updated_at);
+      if (days >= UNCALLED_STALE_DAYS) stuckAll.push({ kind: 'uncalled', key: `c${l.id}`, tab: 'Overdue', sortAt: l.updated_at, lead: l, days });
+    }
+  }
+  // Unassigned leads belong to nobody, so they only show under "Everyone".
+  const stuck = caller === 'all' ? stuckAll : stuckAll.filter(r => r.lead.assigned_to === caller);
+
+  const reasonOf = (r: FollowRow) =>
+    r.kind === 'followup' ? r.f.note : r.kind === 'unassigned' ? 'Unassigned — hand to an executive' : 'Assigned but not called';
+
+  const countOf = (t: Tab) => {
+    const fc = t === 'All' ? scoped.length : scoped.filter(f => tabOf(f) === t).length;
+    const sc = t === 'All' || t === 'Overdue' ? stuck.length : 0;
+    return fc + sc;
+  };
+
   const q = searchQuery.trim().toLowerCase();
-  const rows = scoped
-    .filter(f => tab === 'All' || tabOf(f) === tab)
-    .filter(f => {
-      const l = leadOf(f.lead_id);
-      return !q || (l && [l.customer_name, l.phone, f.note].some(v => v.toLowerCase().includes(q)));
-    })
-    .sort((a, b) => (tab === 'Done' ? b.due_at.localeCompare(a.due_at) : a.due_at.localeCompare(b.due_at)));
+  const matches = (lead: TrackerLead | undefined, text: string) =>
+    !q || (!!lead && [lead.customer_name, lead.phone, text].some(v => v.toLowerCase().includes(q)));
+
+  const fuRows: FollowRow[] = scoped.map(f => ({ kind: 'followup', key: `f${f.id}`, tab: tabOf(f), sortAt: f.due_at, f, lead: leadOf(f.lead_id) }));
+  const rows: FollowRow[] = [
+    ...fuRows.filter(r => tab === 'All' || r.tab === tab),
+    ...(tab === 'Overdue' || tab === 'All' ? stuck : []),
+  ]
+    .filter(r => matches(r.lead, reasonOf(r)))
+    .sort((a, b) => (tab === 'Done' ? b.sortAt.localeCompare(a.sortAt) : a.sortAt.localeCompare(b.sortAt)));
 
   // Each calling executive: what they owe and how reliably they call back
   const board = TELECALLERS.map(t => {
@@ -96,9 +133,12 @@ export default function TeamFollowups({ data, searchQuery, initialCaller, onReas
           { header: 'Due', width: 14 }, { header: 'Calling executive', width: 16 }, { header: 'Lead', width: 18 },
           { header: 'Phone', width: 12 }, { header: 'Reason', width: 26 }, { header: 'Status', width: 10 },
         ],
-        rows: rows.map(f => {
-          const l = leadOf(f.lead_id);
-          return [shortDateTime(f.due_at), callerName(f.caller_id), l?.customer_name ?? '', l?.phone ?? '', f.note, f.status];
+        rows: rows.map(r => {
+          const l = r.lead;
+          const due = r.kind === 'followup' ? shortDateTime(r.f.due_at) : `${r.days}d ${r.kind === 'unassigned' ? 'unassigned' : 'no call'}`;
+          const exec = r.kind === 'unassigned' ? 'Unassigned' : callerName(r.kind === 'followup' ? r.f.caller_id : r.lead.assigned_to);
+          const status = r.kind === 'followup' ? r.f.status : r.kind === 'unassigned' ? 'unassigned' : 'not called';
+          return [due, exec, l?.customer_name ?? '', l?.phone ?? '', reasonOf(r), status];
         }),
       });
       onToast(`Follow-ups exported to ${format === 'excel' ? 'Excel' : 'PDF'}`);
@@ -227,41 +267,69 @@ export default function TeamFollowups({ data, searchQuery, initialCaller, onReas
             </thead>
             <tbody>
               {rows.length === 0 && <EmptyRow cols={7} text={`No ${tab === 'All' ? '' : `${tab.toLowerCase()} `}follow-ups${caller === 'all' ? '' : ` for ${callerName(caller)}`}.`} />}
-              {rows.map(f => {
-                const lead = leadOf(f.lead_id);
-                const last = lastCallFor(f.lead_id, data.activities);
-                const t = tabOf(f);
-                const owner = TELECALLERS.find(x => x.id === f.caller_id);
+              {rows.map(r => {
+                const lead = r.lead;
+                // A picker to hand an unassigned lead out, or move an uncalled one to someone who can call.
+                const picker = (label: string, excludeId: number) => lead && (
+                  <select
+                    className="reassign"
+                    value=""
+                    aria-label={`${label} ${lead.customer_name}`}
+                    onChange={e => onReassign([lead.id], Number(e.target.value))}
+                  >
+                    <option value="" disabled>{label}…</option>
+                    {TELECALLERS.filter(x => x.is_active && x.id !== excludeId).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                );
+
+                if (r.kind === 'followup') {
+                  const f = r.f;
+                  const last = lastCallFor(f.lead_id, data.activities);
+                  const t = r.tab;
+                  const owner = TELECALLERS.find(x => x.id === f.caller_id);
+                  return (
+                    <tr key={r.key} className={t === 'Overdue' ? 'fu-row-overdue' : undefined}>
+                      <td className="due-cell">
+                        <div className={t === 'Overdue' ? 'text-warn strong' : 'strong'}>{f.due_at.startsWith(TODAY) ? `Today, ${time12(f.due_at)}` : shortDate(f.due_at)}</div>
+                        {t === 'Overdue' && <span className="fu-late">{daysLate(f)} {daysLate(f) === 1 ? 'day' : 'days'} late</span>}
+                      </td>
+                      <td className="cust">
+                        {lead?.customer_name ?? '—'}
+                        {lead && <div className="loc">{lead.phone} · {stageName(lead.stage_id)}</div>}
+                      </td>
+                      <td>{f.note}</td>
+                      <td>
+                        {callerName(f.caller_id)}
+                        {owner && !owner.is_active && <div><span className="chip muted">Inactive</span></div>}
+                      </td>
+                      <td>{last ? <>{last.note}<div className="loc">{ago(last.created_at)}</div></> : <span className="loc">Never</span>}</td>
+                      <td><StatusChip status={f.status === 'missed' ? 'Missed' : t} /></td>
+                      <td>{t !== 'Done' && picker('Move to', f.caller_id)}</td>
+                    </tr>
+                  );
+                }
+
+                // Stuck lead surfaced automatically (unassigned too long, or uncalled too long).
+                const unassigned = r.kind === 'unassigned';
                 return (
-                  <tr key={f.id} className={t === 'Overdue' ? 'fu-row-overdue' : undefined}>
+                  <tr key={r.key} className="fu-row-overdue">
                     <td className="due-cell">
-                      <div className={t === 'Overdue' ? 'text-warn strong' : 'strong'}>{f.due_at.startsWith(TODAY) ? `Today, ${time12(f.due_at)}` : shortDate(f.due_at)}</div>
-                      {t === 'Overdue' && <span className="fu-late">{daysLate(f)} {daysLate(f) === 1 ? 'day' : 'days'} late</span>}
+                      <div className="text-warn strong">{shortDate(r.lead.created_at)}</div>
+                      <span className="fu-late">{r.days} {r.days === 1 ? 'day' : 'days'} {unassigned ? 'unassigned' : 'no call'}</span>
                     </td>
                     <td className="cust">
-                      {lead?.customer_name ?? '—'}
-                      {lead && <div className="loc">{lead.phone} · {stageName(lead.stage_id)}</div>}
+                      {r.lead.customer_name}
+                      <div className="loc">{r.lead.phone} · {r.lead.source}</div>
                     </td>
-                    <td>{f.note}</td>
+                    <td>{reasonOf(r)}</td>
                     <td>
-                      {callerName(f.caller_id)}
-                      {owner && !owner.is_active && <div><span className="chip muted">Inactive</span></div>}
+                      {unassigned
+                        ? <span className="chip pending">Unassigned</span>
+                        : <>{callerName(r.lead.assigned_to)}{!TELECALLERS.find(x => x.id === r.lead.assigned_to)?.is_active && <div><span className="chip muted">Inactive</span></div>}</>}
                     </td>
-                    <td>{last ? <>{last.note}<div className="loc">{ago(last.created_at)}</div></> : <span className="loc">Never</span>}</td>
-                    <td><StatusChip status={f.status === 'missed' ? 'Missed' : t} /></td>
-                    <td>
-                      {t !== 'Done' && lead && (
-                        <select
-                          className="reassign"
-                          value=""
-                          aria-label={`Move ${lead.customer_name} to another executive`}
-                          onChange={e => onReassign([lead.id], Number(e.target.value))}
-                        >
-                          <option value="" disabled>Move to…</option>
-                          {TELECALLERS.filter(x => x.is_active && x.id !== f.caller_id).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
-                        </select>
-                      )}
-                    </td>
+                    <td><span className="loc">Never</span></td>
+                    <td><span className="chip pending">{unassigned ? 'Unassigned' : 'Not called'}</span></td>
+                    <td>{unassigned ? picker('Assign to', 0) : picker('Move to', r.lead.assigned_to)}</td>
                   </tr>
                 );
               })}

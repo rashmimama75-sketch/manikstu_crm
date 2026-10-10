@@ -32,7 +32,9 @@ export default function ImportLeads({ leads, onCreate, onClose }: Props) {
   const [rows, setRows] = useState<CheckedCandidate[] | null>(null);
   const [defaultVertical, setDefaultVertical] = useState<number>(VERTICALS[0].id);
   const [defaultSource, setDefaultSource] = useState<string>(IMPORTED_SOURCE);
-  const [assign, setAssign] = useState<'auto' | number>('auto');
+  // Imports land unassigned by default: they wait in the Follow-up pool until the
+  // head hands them out. 'auto' spreads by workload; a number assigns to that executive.
+  const [assign, setAssign] = useState<'unassigned' | 'auto' | number>('unassigned');
 
   const handleFile = async (file: File) => {
     setError(null);
@@ -65,11 +67,13 @@ export default function ImportLeads({ leads, onCreate, onClose }: Props) {
     const load = new Map(active.map(t => [t.id, leads.filter(l => l.assigned_to === t.id && isOpenLead(l)).length]));
     return rows.map(r => {
       if (r.status !== 'ready') return { row: r, callerId: null as number | null };
-      let callerId = r.callerId ?? (assign === 'auto' ? null : assign);
+      // A telecaller named in the file always wins; otherwise unassigned (0), the
+      // chosen executive, or auto-spread by workload.
+      let callerId = r.callerId ?? (assign === 'unassigned' ? 0 : assign === 'auto' ? null : assign);
       if (callerId === null) {
         callerId = Array.from(load.entries()).sort((a, b) => a[1] - b[1])[0][0];
       }
-      load.set(callerId, (load.get(callerId) ?? 0) + 1);
+      if (callerId !== 0) load.set(callerId, (load.get(callerId) ?? 0) + 1);
       return { row: r, callerId };
     });
   }, [rows, leads, assign]);
@@ -88,7 +92,7 @@ export default function ImportLeads({ leads, onCreate, onClose }: Props) {
     })));
   };
 
-  const callerName = (id: number | null) => TELECALLERS.find(t => t.id === id)?.name ?? '—';
+  const callerName = (id: number | null) => (id === 0 ? 'Unassigned' : TELECALLERS.find(t => t.id === id)?.name ?? '—');
 
   return (
     <div className="import-leads">
@@ -159,7 +163,8 @@ export default function ImportLeads({ leads, onCreate, onClose }: Props) {
             </div>
             <div className="form-group">
               <label>Assign to</label>
-              <select value={assign} onChange={e => setAssign(e.target.value === 'auto' ? 'auto' : Number(e.target.value))}>
+              <select value={assign} onChange={e => setAssign(e.target.value === 'auto' || e.target.value === 'unassigned' ? e.target.value : Number(e.target.value))}>
+                <option value="unassigned">Leave unassigned (waits in Follow-up)</option>
                 <option value="auto">Auto: spread by workload</option>
                 {TELECALLERS.filter(t => t.is_active).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>

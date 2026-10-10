@@ -22,7 +22,8 @@ export const verticalName = (id: number) => VERTICALS.find(v => v.id === id)?.na
 export const productOf = (id: number) => TRACKER_PRODUCTS.find(p => p.id === id);
 export const productName = (id: number) => productOf(id)?.name ?? '—';
 export const callerOf = (id: number) => TELECALLERS.find(t => t.id === id);
-export const callerName = (id: number) => callerOf(id)?.name ?? '—';
+// A lead's assigned_to is 0 when it is unassigned (sits in the Follow-up pool until handed out).
+export const callerName = (id: number) => (id === 0 ? 'Unassigned' : callerOf(id)?.name ?? '—');
 export const stagesFor = (verticalId: number) =>
   STAGES.filter(s => s.vertical_id === verticalId).sort((a, b) => a.sort_order - b.sort_order);
 
@@ -63,6 +64,25 @@ export interface TeamData {
   followups: Followup[];
   activities: LeadActivity[];
   sales: TrackerSale[];
+}
+
+// A lead left unassigned this long, or assigned but not called this long, is surfaced
+// in the Follow-up section so nothing slips. Shared by the section and its nav badge.
+export const UNASSIGNED_STALE_DAYS = 7;
+export const UNCALLED_STALE_DAYS = 3;
+
+/** Leads surfaced automatically in Follow-up: unassigned too long, or assigned but never called. */
+export function stuckLeadCount(data: Pick<TeamData, 'leads' | 'activities'>): number {
+  const called = new Set(data.activities.map(a => a.lead_id));
+  let n = 0;
+  for (const l of data.leads) {
+    if (l.assigned_to === 0) {
+      if (daysBefore(l.created_at) >= UNASSIGNED_STALE_DAYS) n++;
+    } else if (isOpenLead(l) && !called.has(l.id) && daysBefore(l.updated_at) >= UNCALLED_STALE_DAYS) {
+      n++;
+    }
+  }
+  return n;
 }
 
 export interface StaffStats {

@@ -152,7 +152,8 @@ function checkNewLead(l: NewLeadInput, index?: number): NewLeadInput {
   if (name.length < 2 || name.length > 80) throw new TrackerError(`Lead name is missing${where}.`);
   if (!/^[6-9]\d{9}$/.test(phone)) throw new TrackerError(`Phone number is not a valid mobile${where}.`);
   if (!VERTICALS.some(v => v.id === l.vertical_id)) throw new TrackerError(`Unknown product line${where}.`);
-  if (!activeCaller(l.assigned_to)) throw new TrackerError(`Leads can only be assigned to an active telecaller${where}.`);
+  // 0 = leave the lead unassigned; otherwise it must go to an active telecaller.
+  if (l.assigned_to !== 0 && !activeCaller(l.assigned_to)) throw new TrackerError(`Leads can only be assigned to an active telecaller${where}.`);
   return { vertical_id: l.vertical_id, assigned_to: l.assigned_to, customer_name: name, phone, source: String(l.source ?? 'Imported file').slice(0, 40) };
 }
 
