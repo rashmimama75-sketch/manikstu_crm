@@ -34,6 +34,20 @@ interface BackendProduct {
   price: number | null;
   stock_quantity: number;
   is_active: boolean;
+  // The rest of the listing, so the edit form opens filled in (all optional: an older backend sends only the basics).
+  sku?: string | null;
+  is_featured?: boolean;
+  display_order?: number;
+  image?: string | null;
+  images?: string[];
+  description?: string | null;
+  long_description?: string | null;
+  highlights?: string[];
+  recommended_for?: string[];
+  specifications?: { label: string; value: string }[];
+  usage_instructions?: string | null;
+  storage_instructions?: string | null;
+  ingredients?: string | null;
 }
 
 /**
@@ -50,24 +64,24 @@ function toCatalogProduct(p: BackendProduct): CatalogProduct {
     slug: p.slug,
     category: (p.category as ProductCategory) ?? 'Health',
     size: p.size ?? '',
-    sku: null,
+    sku: p.sku ?? null,
     price: p.price,
     stock_quantity: p.stock_quantity ?? 0,
-    description: '',
-    long_description: '',
-    image: '',
-    images: [],
-    highlights: [],
-    specifications: [],
-    usage_instructions: '',
-    storage_instructions: '',
-    ingredients: '',
-    recommended_for: [],
+    description: p.description ?? '',
+    long_description: p.long_description ?? '',
+    image: p.image ?? '',
+    images: p.images ?? (p.image ? [p.image] : []),
+    highlights: p.highlights ?? [],
+    specifications: p.specifications ?? [],
+    usage_instructions: p.usage_instructions ?? '',
+    storage_instructions: p.storage_instructions ?? '',
+    ingredients: p.ingredients ?? '',
+    recommended_for: p.recommended_for ?? [],
     rating: null,
     rating_count: 0,
-    is_featured: false,
+    is_featured: p.is_featured ?? false,
     is_active: p.is_active,
-    order: 0,
+    order: p.display_order ?? 0,
     translations: [],
   };
 }

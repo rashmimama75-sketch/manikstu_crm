@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { PackagePlus, Plus } from 'lucide-react';
+import { Pencil, PackagePlus, Plus } from 'lucide-react';
 import type { CatalogProduct } from '../../data/catalogProducts';
 import { LOW_STOCK_LEVEL } from '../../data/stockLevels';
 import { daysBefore, pct, rupees, rupeesShort, shortDate, shortDateTime } from '../../lib/format';
@@ -99,10 +99,12 @@ interface Props {
   movements: StockMovement[];
   searchQuery: string;
   onRestock: (product: CatalogProduct, suggested: number) => void;
+  /** Open the product's listing for editing (price, stock, description, images…). */
+  onEditProduct: (product: CatalogProduct) => void;
   onAddProduct: () => void;
 }
 
-export default function SellerStock({ products, orders, movements, searchQuery, onRestock, onAddProduct }: Props) {
+export default function SellerStock({ products, orders, movements, searchQuery, onRestock, onEditProduct, onAddProduct }: Props) {
   const [tab, setTab] = useState<Tab>('all');
   const [region, setRegion] = useState<Region>('all');
   const rows = useMemo(() => stockRows(products, orders), [products, orders]);
@@ -244,23 +246,24 @@ export default function SellerStock({ products, orders, movements, searchQuery, 
             <thead>
               {regional ? (
                 <tr>
-                  <th>Product</th><th className="num-col">In stock</th><th className="num-col">Reserved here</th><th className="num-col">Available</th>
+                  <th>Product</th><th className="num-col">Price</th><th className="num-col">In stock</th><th className="num-col">Reserved here</th><th className="num-col">Available</th>
                   <th className="num-col">Sold here · 30 days</th><th>Share of sales</th><th>Status</th><th className="num-col">Needed here · {COVER_DAYS} days</th><th></th>
                 </tr>
               ) : (
                 <tr>
-                  <th>Product</th><th className="num-col">In stock</th><th className="num-col">Reserved</th><th className="num-col">Available</th>
+                  <th>Product</th><th className="num-col">Price</th><th className="num-col">In stock</th><th className="num-col">Reserved</th><th className="num-col">Available</th>
                   <th className="num-col">Sold · 30 days</th><th>Lasts</th><th>Status</th><th className="num-col">Suggested restock</th><th></th>
                 </tr>
               )}
             </thead>
             <tbody>
               {shown.length === 0 && (
-                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '24px 0' }}>No products here.</td></tr>
+                <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: '24px 0' }}>No products here.</td></tr>
               )}
               {shown.map(r => (
                 <tr key={r.p.id}>
                   <td className="cust">{r.p.name}<div className="loc">{r.p.size}{r.p.is_active ? '' : ' · hidden on website'}</div></td>
+                  <td className="num-col">{r.p.price !== null && r.p.price > 0 ? <strong>{rupees(r.p.price)}</strong> : <span className="text-warn" title="No price yet: it cannot be ordered until a price is set (Edit)">Not set</span>}</td>
                   <td className="num-col">{r.stock}</td>
                   {regional ? (
                     <>
@@ -295,7 +298,10 @@ export default function SellerStock({ products, orders, movements, searchQuery, 
                       <td className="num-col">{r.suggested > 0 ? <strong>{r.suggested}</strong> : <span className="loc">—</span>}</td>
                     </>
                   )}
-                  <td><button className="btn-secondary btn-small stock-btn" onClick={() => onRestock(r.p, r.suggested)}><PackagePlus size={14} /> Restock</button></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="btn-secondary btn-small stock-btn" onClick={() => onRestock(r.p, r.suggested)}><PackagePlus size={14} /> Restock</button>
+                    <button className="btn-secondary btn-small stock-btn" style={{ marginLeft: 6 }} onClick={() => onEditProduct(r.p)} aria-label={`Edit ${r.p.name}`}><Pencil size={14} /> Edit</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

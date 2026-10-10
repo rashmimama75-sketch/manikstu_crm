@@ -282,38 +282,81 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     reader.onload = () => setAddImages(prev => ({ ...prev, [slot]: String(reader.result) }));
     reader.readAsDataURL(file);
   };
-  const openAddProduct = () => { setAdd(emptyAdd); setAddSpecs({}); setAddImages({}); setAddError(null); setAdding(true); };
+  /** The product being edited (null when adding a new one). The same form serves both. */
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const openAddProduct = () => { setEditingId(null); setAdd(emptyAdd); setAddSpecs({}); setAddImages({}); setAddError(null); setAdding(true); };
+  const SPEC_LABELS = SPEC_FIELDS.map(([label]) => label);
+  /** Open a product's listing for editing: the form is filled with what is there now. */
+  const openEditProduct = (p: CatalogProduct) => {
+    setEditingId(p.id);
+    setAdd({
+      name: p.name, slug: p.slug, category: (p.category === 'Nutrition' ? 'Nutrition' : 'Health'), size: p.size ?? '', sku: p.sku ?? '',
+      price: p.price === null ? '' : String(p.price), stock: String(p.stock_quantity), order: String(p.order),
+      active: p.is_active, featured: p.is_featured, description: p.description, longDescription: p.long_description,
+      highlights: p.highlights.join('\n'), recommendedFor: p.recommended_for.join('\n'),
+      usage: p.usage_instructions, storage: p.storage_instructions, ingredients: p.ingredients,
+    });
+    setAddSpecs(Object.fromEntries(p.specifications.filter(s => SPEC_LABELS.includes(s.label)).map(s => [s.label, s.value])));
+    const slots = ['main', 'angle1', 'angle2', 'angle3'];
+    const imgs = p.images.length ? p.images : p.image ? [p.image] : [];
+    setAddImages(Object.fromEntries(imgs.slice(0, 4).map((url, i) => [slots[i], url])));
+    setAddError(null);
+    setAdding(true);
+  };
   const toLines = (s: string) => s.split('\n').map(l => l.trim()).filter(Boolean);
   const saveAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = add.name.replace(/\s+/g, ' ').trim();
     if (name.length < 3) { setAddError('Enter a product name (at least 3 characters).'); return; }
-    if (catalog.some(p => p.name.toLowerCase() === name.toLowerCase())) { setAddError('A product with this name already exists.'); return; }
+    const editing = editingId !== null;
+    if (!editing && catalog.some(p => p.name.toLowerCase() === name.toLowerCase())) { setAddError('A product with this name already exists.'); return; }
     const price = add.price.trim() === '' ? null : Math.max(0, Math.round(Number(add.price)));
     const stock = Math.max(0, Math.round(Number(add.stock) || 0));
     const highlights = toLines(add.highlights);
     const recommendedFor = toLines(add.recommendedFor);
-    const specifications = SPEC_FIELDS
-      .map(([label]) => ({ label, value: (addSpecs[label] ?? '').trim() }))
-      .filter(s => s.value !== '');
+    // Specifications the form has no field for (added on the website) are kept as they are when editing.
+    const keptSpecs = editing ? (catalog.find(p => p.id === editingId)?.specifications ?? []).filter(s => !SPEC_LABELS.includes(s.label)) : [];
+    const specifications = [
+      ...SPEC_FIELDS
+        .map(([label]) => ({ label, value: (addSpecs[label] ?? '').trim() }))
+        .filter(s => s.value !== ''),
+      ...keptSpecs,
+    ];
     const images = Object.entries(addImages).filter(([, v]) => v).map(([, v]) => v);
     setAddBusy(true);
     setAddError(null);
     try {
+      const fields = {
+        category: add.category, size: add.size.trim() || null, sku: add.sku.trim() || null,
+        price, stock_quantity: stock, is_active: add.active, is_featured: add.featured, display_order: Math.round(Number(add.order) || 0),
+        description: add.description.trim() || null, long_description: add.longDescription.trim() || null,
+        highlights, recommended_for: recommendedFor, specifications,
+        usage_instructions: add.usage.trim() || null, storage_instructions: add.storage.trim() || null, ingredients: add.ingredients.trim() || null,
+        images,
+      };
       const res = await fetch('/api/seller/products', {
-        method: 'POST',
+        method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name, slug: add.slug.trim() || null, category: add.category, size: add.size.trim() || null, sku: add.sku.trim() || null,
-          price, stock_quantity: stock, is_active: add.active, is_featured: add.featured, display_order: Math.round(Number(add.order) || 0),
-          description: add.description.trim() || null, long_description: add.longDescription.trim() || null,
-          highlights, recommended_for: recommendedFor, specifications,
-          usage_instructions: add.usage.trim() || null, storage_instructions: add.storage.trim() || null, ingredients: add.ingredients.trim() || null,
-          images,
-        }),
+        // Editing never sends a name or slug: they identify the product on the website and are not changed here.
+        body: JSON.stringify(editing ? { id: editingId, ...fields } : { name, slug: add.slug.trim() || null, ...fields }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setAddError(data.error || 'Could not add the product.'); setAddBusy(false); return; }
+      if (!res.ok) { setAddError(data.error || (editing ? 'Could not save the changes.' : 'Could not add the product.')); setAddBusy(false); return; }
+      if (editing) {
+        // Show the saved listing straight away (images come back as their stored URLs).
+        const saved = data.product ?? {};
+        setCatalog(prev => prev.map(p => (p.id !== editingId ? p : {
+          ...p, category: add.category, size: add.size.trim(), sku: add.sku.trim() || null, price, stock_quantity: stock,
+          description: add.description.trim(), long_description: add.longDescription.trim(), highlights, specifications,
+          usage_instructions: add.usage.trim(), storage_instructions: add.storage.trim(), ingredients: add.ingredients.trim(),
+          recommended_for: recommendedFor, is_featured: add.featured, is_active: add.active, order: Math.round(Number(add.order) || 0),
+          images: Array.isArray(saved.images) ? saved.images : images, image: saved.image ?? images[0] ?? '',
+        })));
+        setAdding(false);
+        setAddBusy(false);
+        showToast(`${name} saved${add.active ? '' : ' · hidden on the website'}`);
+        return;
+      }
       const id: number = data.product?.id ?? (Math.max(0, ...catalog.map(p => p.id)) + 1);
       const product: CatalogProduct = {
         id, name, slug: (add.slug.trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')), category: add.category, size: add.size.trim(),
@@ -422,7 +465,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               onTrack={orderNumber => { setActivePage('tracking'); setSearchQuery(''); setTrackFocus(orderNumber); window.scrollTo(0, 0); }}
             />
           )}
-          {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} onAddProduct={openAddProduct} />}
+          {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} onEditProduct={openEditProduct} onAddProduct={openAddProduct} />}
           {activePage === 'tracking' && (
             <SellerTracking
               orders={myOrders}
@@ -532,7 +575,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
         )}
       </Modal>
 
-      <Modal isOpen={adding} onClose={() => setAdding(false)} title="Add a product" closeOnBackdrop={false} wide>
+      <Modal isOpen={adding} onClose={() => setAdding(false)} title={editingId !== null ? `Edit ${add.name}` : 'Add a product'} closeOnBackdrop={false} wide>
         <form onSubmit={saveAddProduct} className="product-form">
           <div className="pf-grid">
             <div className="pf-main">
@@ -540,11 +583,11 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
                 <h3 className="pf-section-title">Basics</h3>
                 <div className="form-group">
                   <label htmlFor="ap-name">Product name *</label>
-                  <input id="ap-name" type="text" required placeholder="e.g. Calcium Syrup" value={add.name} onChange={e => setAddField('name', e.target.value)} />
+                  <input id="ap-name" type="text" required placeholder="e.g. Calcium Syrup" value={add.name} readOnly={editingId !== null} title={editingId !== null ? 'The name identifies this product on the website and cannot be changed here' : undefined} onChange={e => setAddField('name', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label htmlFor="ap-slug">Slug <span className="pf-hint">leave blank to generate from the name</span></label>
-                  <input id="ap-slug" type="text" placeholder="calcium-syrup" value={add.slug} onChange={e => setAddField('slug', e.target.value)} />
+                  <input id="ap-slug" type="text" placeholder="calcium-syrup" value={add.slug} readOnly={editingId !== null} onChange={e => setAddField('slug', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label htmlFor="ap-desc">Short description</label>
@@ -661,7 +704,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
           {addError && <p className="loc" style={{ color: 'var(--rust)', margin: '4px 0 12px' }}>{addError}</p>}
           <div className="modal-footer">
             <button type="button" className="btn-secondary" onClick={() => setAdding(false)}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={addBusy}>{addBusy ? 'Adding…' : 'Add product'}</button>
+            <button type="submit" className="btn-primary" disabled={addBusy}>{addBusy ? (editingId !== null ? 'Saving…' : 'Adding…') : (editingId !== null ? 'Save changes' : 'Add product')}</button>
           </div>
         </form>
       </Modal>
