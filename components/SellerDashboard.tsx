@@ -39,6 +39,9 @@ interface Props {
 export default function SellerDashboard({ user, seller, initialOrders, initialProducts, mixedOrderIds }: Props) {
   const [activePage, setActivePage] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
+  /** An order to open on the Tracking page (set by Track, Mark packed, Mark shipped…). It opens that order's tracking
+   * details over the full list rather than filtering the list down to it, so the tabs and counts stay honest. */
+  const [trackFocus, setTrackFocus] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Sample data, kept in this page for now: changes reset on refresh until the backend has sellers.
@@ -135,7 +138,8 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     // near the bottom of the default list and would otherwise be invisible without this.
     if (to === 'shipped' || to === 'delivered') {
       setActivePage('tracking');
-      setSearchQuery(order?.order_number ?? '');
+      setSearchQuery('');
+      setTrackFocus(order?.order_number ?? null);
       window.scrollTo(0, 0);
     }
   };
@@ -188,7 +192,8 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     if (action === 'packed' && order && isLiveOrder(order)) {
       advanceOrder(orderId, 'ready_for_dispatch');
       setActivePage('tracking');
-      setSearchQuery(order.order_number);
+      setSearchQuery('');
+      setTrackFocus(order.order_number);
       window.scrollTo(0, 0);
       return;
     }
@@ -199,7 +204,8 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     });
     if (order) showToast(`${order.order_number} marked ${action === 'packed' ? 'packed' : 'out for delivery'}`);
     setActivePage('tracking');
-    setSearchQuery(order?.order_number ?? '');
+    setSearchQuery('');
+    setTrackFocus(order?.order_number ?? null);
     window.scrollTo(0, 0);
   };
 
@@ -413,7 +419,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               searchQuery={searchQuery}
               onOpenConfirm={openConfirmCard}
               onReject={id => advanceOrder(id, 'rejected')}
-              onTrack={orderNumber => { setActivePage('tracking'); setSearchQuery(orderNumber); window.scrollTo(0, 0); }}
+              onTrack={orderNumber => { setActivePage('tracking'); setSearchQuery(''); setTrackFocus(orderNumber); window.scrollTo(0, 0); }}
             />
           )}
           {activePage === 'stock' && <SellerStock products={myProducts} orders={myOrders} movements={movements} searchQuery={searchQuery} onRestock={openRestock} onAddProduct={openAddProduct} />}
@@ -423,6 +429,8 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
               searchQuery={searchQuery}
               shipmentDetails={shipmentDetails}
               onAdvanceStage={advanceManualStage}
+              focusOrderNumber={trackFocus}
+              onFocusHandled={() => setTrackFocus(null)}
               onOpenConfirm={openConfirmCard}
             />
           )}

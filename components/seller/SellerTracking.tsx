@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { TODAY } from '../../data/today';
 import { daysBefore, rupees, shortDate, shortDateTime } from '../../lib/format';
@@ -49,9 +49,12 @@ interface Props {
   shipmentDetails: Record<number, ShipmentDetails>;
   onAdvanceStage: (orderId: number, action: ManualStageAction) => void;
   onOpenConfirm: (orderId: number) => void;
+  /** An order to open straight away (from Track on the Orders page, or after Mark packed / shipped). */
+  focusOrderNumber?: string | null;
+  onFocusHandled?: () => void;
 }
 
-export default function SellerTracking({ orders, searchQuery, shipmentDetails, onAdvanceStage, onOpenConfirm }: Props) {
+export default function SellerTracking({ orders, searchQuery, shipmentDetails, onAdvanceStage, onOpenConfirm, focusOrderNumber, onFocusHandled }: Props) {
   const [tab, setTab] = useState<Tab>('all');
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -60,13 +63,29 @@ export default function SellerTracking({ orders, searchQuery, shipmentDetails, o
     () => orders.map(o => ({ o, t: sellerTrackingFor(o.order, shipmentDetails[o.order.id]) })),
     [orders, shipmentDetails],
   );
-  const count = (k: Tab) => tracked.filter(x => inTab(x.o, x.t, k)).length;
+
+  // Arriving for one order (Track, Mark packed…): show the full list on "All" with that order's tracking opened over it,
+  // rather than narrowing the list to that single order, which made every other tab look empty.
+  useEffect(() => {
+    if (!focusOrderNumber) return;
+    const hit = tracked.find(x => x.o.order.order_number === focusOrderNumber);
+    if (!hit) return; // not in the list yet (it is still arriving); try again when the list updates
+    setTab('all');
+    setPage(0);
+    setOpenId(hit.o.order.id);
+    onFocusHandled?.();
+  }, [focusOrderNumber, tracked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const q = searchQuery.trim().toLowerCase();
+  const matchesSearch = (x: typeof tracked[number]) =>
+    !q || [x.o.order.order_number, x.o.order.customer_name, x.o.order.city, x.t.awb ?? '', x.t.courier ?? '']
+      .some(v => v.toLowerCase().includes(q));
+  // A tab's number is what the table would show under it, search included, so "Ready to ship (9)" never sits above an empty table.
+  const count = (k: Tab) => tracked.filter(x => inTab(x.o, x.t, k) && matchesSearch(x)).length;
+
   const rows = tracked
     .filter(x => inTab(x.o, x.t, tab))
-    .filter(x => !q || [x.o.order.order_number, x.o.order.customer_name, x.o.order.city, x.t.awb ?? '', x.t.courier ?? '']
-      .some(v => v.toLowerCase().includes(q)))
+    .filter(matchesSearch)
     // late first, then the soonest expected delivery
     .sort((a, b) => Number(b.t.delayed) - Number(a.t.delayed) || (a.t.expected_at ?? '9').localeCompare(b.t.expected_at ?? '9') || b.o.order.created_at.localeCompare(a.o.order.created_at));
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
