@@ -79,6 +79,9 @@ export interface TrackerSale {
   quantity: number;
   amount: number;
   sold_at: string;
+  /** Sent by the backend with each sale, so a product the dashboards have not heard of yet still reads correctly. */
+  product_name?: string | null;
+  vertical_id?: number | null;
 }
 
 // 'shipped' is what the spec calls DISPATCHED; it stays the stored value.

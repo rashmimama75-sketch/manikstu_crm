@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { BarChart3, CalendarClock, ClipboardCheck, History, Inbox, LayoutDashboard, ListChecks, MessageSquareWarning, PackageCheck } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BarChart3, CalendarClock, ClipboardCheck, Inbox, LayoutDashboard, ListChecks, MessageSquareWarning, PackageCheck } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
 import CeOverview from './calling-executive/CeOverview';
-import type { CallForm } from './calling-executive/CallDeskView';
-import CallHistoryView from './calling-executive/CallHistoryView';
+import { type CallForm, emptyOrderForm } from './calling-executive/CallDeskView';
 import CallbacksView from './calling-executive/CallbacksView';
 import CeFollowupsView from './calling-executive/CeFollowupsView';
 import CeReportsView from './calling-executive/CeReportsView';
@@ -18,7 +17,7 @@ import ExecComplaints from './calling-executive/ExecComplaints';
 import { useComplaints } from '../lib/useComplaints';
 import { enquiriesOf } from '../lib/trackerOps';
 import { reportStatusOf } from '../lib/leadWorkflow';
-import CallModal, { CallTarget, dial } from './calling-executive/CallModal';
+import CallModal, { CallTarget, CatalogItem, dial } from './calling-executive/CallModal';
 import { TODAY, TRACKER_SALES, CallOutcome, CustomerResponse } from '../data/managerDashboard';
 import { dayStart } from '../lib/format';
 import type { CallInput, TrackerState } from '../lib/trackerOps';
@@ -41,6 +40,7 @@ const emptyForm = (stageId: number, nextNote = ''): CallForm => ({
   nextDate: tomorrow(),
   nextNote,
   customerResponse: '',
+  order: emptyOrderForm(),
 });
 
 export default function CallingExecutiveDashboard({ user, tracker }: { user: SessionUser; tracker: TrackerState }) {
@@ -82,6 +82,20 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
   const [complaints, setComplaints, complaintsSync] = useComplaints([], msg => showToast(`⚠️ ${msg}`));
   const myOpenComplaints = complaints.filter(c => c.assigned_to === me.id && c.status !== 'resolved' && c.status !== 'closed').length;
 
+  // What a customer can order on a call, with prices: the live catalogue (every priced, active product from the website
+  // and the sellers). Loaded when the dashboard opens and again each time a call opens, so a product added a minute ago
+  // is there. Empty without a backend (offline demo), where a call can still be saved but no order is placed.
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const loadCatalog = async () => {
+    try {
+      const res = await fetch('/api/catalog/products', { cache: 'no-store' });
+      if (!res.ok) return;
+      const body = await res.json();
+      if (Array.isArray(body.data)) setCatalog(body.data as CatalogItem[]);
+    } catch { /* the order section shows "Loading products…" until it works */ }
+  };
+  useEffect(() => { void loadCatalog(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Records a call (activity, lead stage, follow-ups) on the server. */
   const logCall = async (
     { lead, followup }: CallTarget,
@@ -95,15 +109,25 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
       stageId: form.stageId,
       note: form.note,
       customerResponse: form.customerResponse || null,
+      // The customer ordered on this call: send what, how many and where, so it becomes an order for the seller.
+      order: outcome === 'Connected' && form.customerResponse === 'Placed order' && form.order.productId !== ''
+        ? {
+            productId: Number(form.order.productId), quantity: Math.floor(Number(form.order.quantity) || 0), address: form.order.address.trim(),
+            city: form.order.city.trim(), state: form.order.state.trim(), pincode: form.order.pincode.trim(), paymentMethod: form.order.paymentMethod,
+          }
+        : null,
       durationSec,
       followupId: followup?.id ?? null,
       next: form.scheduleNext && form.nextDate ? { date: form.nextDate, note: form.nextNote } : null,
     };
     setHandled(prev => [...prev, lead.id]);
     try {
-      await sync.run({ type: 'log-call', call });
+      const { message } = await sync.run({ type: 'log-call', call });
       const stageChanged = form.stageId !== lead.stage_id;
-      showToast(`${lead.customer_name}: ${outcome}${stageChanged ? ` · moved to ${stageOf(form.stageId)?.name}` : ''}${form.scheduleNext ? ' · callback booked' : ''}`);
+      // When an order was placed the server says which one (and that it went to the seller): that is the news worth showing.
+      showToast(call.order && message.includes('order')
+        ? message
+        : `${lead.customer_name}: ${outcome}${stageChanged ? ` · moved to ${stageOf(form.stageId)?.name}` : ''}${form.scheduleNext ? ' · callback booked' : ''}`);
     } catch (e) {
       setHandled(prev => prev.filter(id => id !== lead.id)); // not saved: keep it in the queue
       showToast(`⚠️ ${(e as Error).message}`);
@@ -120,6 +144,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
       queue.find(q => q.lead.id === leadId)?.followup ??
       myFollowups.filter(f => f.lead_id === leadId && f.status !== 'done').sort((a, b) => a.due_at.localeCompare(b.due_at))[0];
     dial(lead.phone);
+    void loadCatalog(); // refresh the products the customer can order, so a newly added one is in the list
     setCallTarget({ lead, followup });
   };
 
@@ -150,13 +175,12 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
 
   const pageMeta: Record<string, { title: string; sub: string }> = {
     overview:  { title: `Namaskar, ${firstName}`, sub: 'Your day, callbacks, leads and performance at a glance.' },
-    history:   { title: 'Call History', sub: 'Every call you have logged, with outcome, duration and note.' },
     callbacks: { title: 'Call Desk',    sub: 'Your assigned leads, calls made, pending calls and callbacks in one place.' },
     followups: { title: 'Follow-ups',   sub: 'Every callback you owe — overdue, due today and upcoming.' },
     reports:   { title: 'Reports',      sub: 'Your calling performance, and reports you can download as Excel or PDF.' },
     enquiries: { title: 'Website Enquiries', sub: 'Enquiries the telecalling head has handed to you: call the customer with their message in front of you.' },
     complaints: { title: 'Complaints', sub: 'Customer complaints assigned to you: call, add notes, resolve them or hand them back to the head.' },
-    'my-reports': { title: 'My Call Reports', sub: 'The report you submit with every call, and whether the telecalling head has verified it or sent it back.' },
+    'my-reports': { title: 'Call Reports', sub: 'Every call you have made and the report you submitted for it, and whether the telecalling head has verified it or sent it back.' },
     'order-calls': { title: 'Order Calls', sub: 'Orders the seller has confirmed: call the customer, log how it went and book follow-ups.' },
   };
   const currentMeta = pageMeta[activePage] ?? pageMeta.overview;
@@ -168,8 +192,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
       items: [
         { key: 'callbacks', label: 'Call desk', icon: CalendarClock, count: dueCallbacks },
         { key: 'followups', label: 'Follow-ups', icon: ListChecks, count: dueCallbacks },
-        { key: 'history', label: 'Call history', icon: History },
-        { key: 'my-reports', label: 'My call reports', icon: ClipboardCheck, count: myActivities.filter(a => reportStatusOf(a) === 'returned').length },
+        { key: 'my-reports', label: 'Call reports', icon: ClipboardCheck, count: myActivities.filter(a => reportStatusOf(a) === 'returned').length },
         { key: 'order-calls', label: 'Order calls', icon: PackageCheck },
       ],
     },
@@ -200,7 +223,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           <Topbar
             title={currentMeta.title}
             subtitle={currentMeta.sub}
-            search={activePage === 'history' || activePage === 'callbacks' || activePage === 'followups' || activePage === 'order-calls' || activePage === 'my-reports' || activePage === 'enquiries' || activePage === 'complaints'
+            search={activePage === 'callbacks' || activePage === 'followups' || activePage === 'order-calls' || activePage === 'my-reports' || activePage === 'enquiries' || activePage === 'complaints'
               ? { query: searchQuery, onChange: setSearchQuery, placeholder: 'Search by name, phone or note…' }
               : undefined}
             status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
@@ -210,6 +233,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           {activePage === 'overview' && (
             <CeOverview
               data={teamData}
+              assignments={sync.data.assignments}
               me={me}
               queueCount={queue.length}
               onStartCalling={startNext}
@@ -228,7 +252,6 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
               onDone={completeFollowup}
             />
           )}
-          {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
           {activePage === 'order-calls' && <OrderFollowUp searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'my-reports' && <MyReports leads={myLeads} activities={myActivities} searchQuery={searchQuery} onResubmit={resubmitReport} />}
           {activePage === 'enquiries' && <ExecEnquiries enquiries={myEnquiries} leads={myLeads} activities={myActivities} searchQuery={searchQuery} meName={me.name} onCall={leadId => startCall(leadId)} />}
@@ -260,6 +283,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           me={me}
           history={activities.filter(a => a.lead_id === callTarget.lead.id).sort((a, b) => b.created_at.localeCompare(a.created_at))}
           enquiry={myEnquiries.find(e => e.lead_id === callTarget.lead.id)}
+          catalog={catalog}
           initialForm={emptyForm(callTarget.lead.stage_id, callTarget.followup?.note ?? '')}
           onSave={(outcome, callForm, durationSec) => {
             logCall(callTarget, outcome, callForm, durationSec);

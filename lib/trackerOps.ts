@@ -70,8 +70,21 @@ export interface CallInput {
   next?: { date: string; note: string } | null;
   /** When the call happened (calling report import); defaults to now. */
   calledAt?: string | null;
+  /** The order the customer placed during the call (taken with the call report when the response is "Placed order"). */
+  order?: CallOrderInput | null;
   /** What the customer said: required on the call report when the customer was reached. */
   customerResponse?: CustomerResponse | null;
+}
+
+/** What a phone order carries: a catalogue product (priced by the server), how many, and where to deliver. */
+export interface CallOrderInput {
+  productId: number;
+  quantity: number;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  paymentMethod: 'COD' | 'UPI';
 }
 
 /** The part of a call report an executive can correct and submit again. */

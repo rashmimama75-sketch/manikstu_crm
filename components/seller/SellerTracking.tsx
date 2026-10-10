@@ -176,10 +176,10 @@ export default function SellerTracking({ orders, searchQuery, shipmentDetails, o
 
               <section className="od-section od-row">
                 <div>
-                  <div className="od-label">Your order reference</div>
+                  <div className="od-label">Courier and tracking number</div>
                   {shipmentDetails[o.order.id] ? (
                     <>
-                      {shipmentDetails[o.order.id].orderNo}
+                      {shipmentDetails[o.order.id].courier || '—'}
                       <div className="loc">Tracking {shipmentDetails[o.order.id].trackingNo}</div>
                     </>
                   ) : (

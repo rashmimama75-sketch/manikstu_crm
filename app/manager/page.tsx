@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import ManagerDashboard from '../../components/ManagerDashboard';
 import { requireRole } from '../../lib/auth';
 import { getInitialTracker } from '../../lib/initialTracker';
-import { loadTelecallers } from '../../lib/telecallersServer';
+import { loadSales, loadTelecallers } from '../../lib/telecallersServer';
 import TelecallersSync from '../../components/TelecallersSync';
 import { getManagerData } from '../../lib/managerData';
 import { usingBackend } from '../../lib/backend';
@@ -15,10 +15,11 @@ export const metadata: Metadata = {
 
 export default async function ManagerPage() {
   const user = await requireRole('manager');
-  const [tracker, data, telecallers] = await Promise.all([getInitialTracker(user), getManagerData(), loadTelecallers()]);
+  // loadTelecallers first: it clears the sample data that loadSales then replaces with the real sales
+  const [tracker, data, telecallers, sales] = await Promise.all([getInitialTracker(user), getManagerData(), loadTelecallers(), loadSales()]);
   return (
     <>
-    <TelecallersSync list={telecallers} live={usingBackend()} />
+    <TelecallersSync list={telecallers} sales={sales} live={usingBackend()} />
     <ManagerDashboard
       user={user}
       tracker={tracker}

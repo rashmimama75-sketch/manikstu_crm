@@ -140,31 +140,31 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     }
   };
 
-  // Confirm order: the seller types in an order/reference no. and a tracking no. by hand.
+  // Confirm order: the seller types in the courier and its tracking number by hand (the order id is already known).
   // Once saved, the row switches from "Confirm" to "View" (this same card, read/editable).
   const [shipmentDetails, setShipmentDetails] = useState<Record<number, ShipmentDetails>>({});
   const [confirmOrderId, setConfirmOrderId] = useState<number | null>(null);
-  const [confirmOrderNo, setConfirmOrderNo] = useState('');
+  const [confirmCourier, setConfirmCourier] = useState('');
   const [confirmTrackingNo, setConfirmTrackingNo] = useState('');
   const confirmOrder = orders.find(o => o.id === confirmOrderId) ?? null;
 
   const openConfirmCard = (orderId: number) => {
     const existing = shipmentDetails[orderId];
     setConfirmOrderId(orderId);
-    setConfirmOrderNo(existing?.orderNo ?? '');
+    setConfirmCourier(existing?.courier ?? '');
     setConfirmTrackingNo(existing?.trackingNo ?? '');
   };
   const closeConfirmCard = () => setConfirmOrderId(null);
 
   const saveConfirmCard = (e: React.FormEvent) => {
     e.preventDefault();
-    if (confirmOrderId === null || !confirmOrderNo.trim() || !confirmTrackingNo.trim()) return;
+    if (confirmOrderId === null || !confirmCourier.trim() || !confirmTrackingNo.trim()) return;
     const isFirstTime = confirmOrder?.status === 'pending';
     setShipmentDetails(prev => ({
       ...prev,
       [confirmOrderId]: {
         ...prev[confirmOrderId],
-        orderNo: confirmOrderNo.trim(),
+        courier: confirmCourier.trim(),
         trackingNo: confirmTrackingNo.trim(),
         confirmedAt: prev[confirmOrderId]?.confirmedAt ?? nowStamp(),
       },
@@ -194,7 +194,7 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
     }
     const field = action === 'packed' ? 'packedAt' : 'outForDeliveryAt';
     setShipmentDetails(prev => {
-      const existing = prev[orderId] ?? { orderNo: '', trackingNo: '', confirmedAt: nowStamp() };
+      const existing = prev[orderId] ?? { courier: '', trackingNo: '', confirmedAt: nowStamp() };
       return { ...prev, [orderId]: { ...existing, [field]: nowStamp() } };
     });
     if (order) showToast(`${order.order_number} marked ${action === 'packed' ? 'packed' : 'out for delivery'}`);
@@ -454,18 +454,18 @@ export default function SellerDashboard({ user, seller, initialOrders, initialPr
           <form onSubmit={saveConfirmCard}>
             <p className="loc" style={{ marginBottom: 14 }}>
               {confirmOrder.status === 'pending'
-                ? 'Add your order reference and courier tracking number to confirm this order.'
-                : 'Your saved order reference and tracking number for this order.'}
+                ? 'Add the courier and its tracking number to confirm this order.'
+                : 'The courier and tracking number saved for this order.'}
             </p>
             <div className="form-group">
-              <label htmlFor="sc-order-no">Order No.</label>
+              <label htmlFor="sc-courier">Courier name</label>
               <input
-                id="sc-order-no"
+                id="sc-courier"
                 type="text"
                 required
-                placeholder="Your reference / invoice number"
-                value={confirmOrderNo}
-                onChange={e => setConfirmOrderNo(e.target.value)}
+                placeholder="e.g. India Post, Delhivery, DTDC"
+                value={confirmCourier}
+                onChange={e => setConfirmCourier(e.target.value)}
               />
             </div>
             <div className="form-group">

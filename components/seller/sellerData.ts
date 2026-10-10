@@ -18,13 +18,14 @@ export interface SellerOrder {
 }
 
 /**
- * Order/tracking reference a seller types in by hand when confirming an order, plus the
+ * Courier and tracking number a seller types in by hand when confirming an order, plus the
  * fulfilment steps they've clicked through since (sample data, not backed by the API yet).
  * packedAt and outForDeliveryAt exist only once the seller has marked them - the app never
  * guesses these from elapsed time.
  */
 export interface ShipmentDetails {
-  orderNo: string;
+  /** The courier the seller is using (typed in when confirming the order). */
+  courier: string;
   trackingNo: string;
   confirmedAt: string;
   packedAt?: string;
@@ -59,6 +60,9 @@ export function sellerTrackingFor(o: SalesOrder, details: ShipmentDetails | unde
   const now = isLiveOrder(o) ? realNowStamp() : nowArg; // live orders are dated by the real calendar
   const base = trackingFor(o, now);
   if (o.status === 'cancelled' || o.status === 'rejected') return base;
+  // The courier and tracking number the seller typed in when confirming win over the simulated ones.
+  const courier = details?.courier.trim() || base.courier;
+  const awb = details?.trackingNo.trim() || base.awb;
 
   const confirmedAt = historyAt(o, 'confirmed');
   const packedAt = historyAt(o, 'ready_for_dispatch') ?? details?.packedAt ?? null;
@@ -73,7 +77,7 @@ export function sellerTrackingFor(o: SalesOrder, details: ShipmentDetails | unde
   ];
   if (confirmedAt) events.push({ stage: 'confirmed', at: confirmedAt, text: 'Order confirmed by the seller', place: 'Seller' });
   if (packedAt) events.push({ stage: 'packed', at: packedAt, text: `Packed: ${o.items.map(i => `${i.product_name} × ${i.quantity}`).join(', ')}`, place: 'Seller' });
-  if (shippedAt) events.push({ stage: 'shipped', at: shippedAt, text: `Handed to ${base.courier} · AWB ${base.awb}`, place: 'Seller' });
+  if (shippedAt) events.push({ stage: 'shipped', at: shippedAt, text: `Handed to ${courier ?? "the courier"} · tracking ${awb ?? "—"}`, place: 'Seller' });
   if (outAt) events.push({ stage: 'out_for_delivery', at: outAt, text: 'Out for delivery', place: o.city });
   if (deliveredAt) {
     events.push({
@@ -87,7 +91,7 @@ export function sellerTrackingFor(o: SalesOrder, details: ShipmentDetails | unde
   const expected_at = stage === 'delivered' ? null : base.expected_at;
   const delayed = (stage === 'shipped' || stage === 'out_for_delivery') && !!expected_at && expected_at < now;
 
-  return { stage, courier: base.courier, awb: base.awb, expected_at, expectedIsEstimate: !shippedAt, delayed, events };
+  return { stage, courier, awb, expected_at, expectedIsEstimate: !shippedAt, delayed, events };
 }
 
 export type PayoutStatus = 'Paid out' | 'Due' | 'On hold' | 'None';

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCheck, Download, Megaphone, MessageCircle, Search, Send, Users, X } from 'lucide-react';
 import { SalesOrder, TODAY } from '../../data/managerDashboard';
 import { AUDIENCES, AudienceKey, Campaign, Recipient, TEMPLATES, fillTemplate, whatsappTo } from '../../data/marketing';
@@ -27,12 +27,54 @@ interface Contact {
   /** Last order, or last time the lead was worked. */
   when: string;
   kind: 'customer' | 'lead';
+  /** Where this client came from: they ordered, sent an enquiry, complained, or are a lead. One client can be several. */
+  tags: ClientTag[];
+  email?: string | null;
+}
+
+type ClientTag = 'order' | 'enquiry' | 'complaint' | 'lead';
+const TAG_LABEL: Record<ClientTag, string> = { order: 'Customer', enquiry: 'Enquiry', complaint: 'Complaint', lead: 'Lead' };
+const TAG_CHIP: Record<ClientTag, string> = { order: 'delivered', enquiry: 'transit', complaint: 'pending', lead: 'confirmed' };
+const TAG_PILL: Record<ClientTag, string> = { order: 'Customers', enquiry: 'Enquiries', complaint: 'Complaints', lead: 'Leads' };
+
+/** One client as GET /marketing/clients returns it (the backend merges orders, enquiries, complaints and leads by phone). */
+interface RemoteClient {
+  phone: string; name: string; place: string | null; email: string | null; product: string | null;
+  tags: ClientTag[]; orders: number; detail: string; when: string | null;
 }
 
 /** WhatsApp marketing: pick who to reach, write the message, then send it chat by chat. */
 export default function TeamMarketing({ data, orders, campaigns, onCampaignsChange, onToast }: Props) {
+  // Every client from the CRM backend: website orders (even just placed), enquiries and complaints, plus imported leads.
+  // Null until it loads, and for good when there is no backend (the offline demo works from the sample data below).
+  const [remote, setRemote] = useState<{ clients: RemoteClient[]; products: string[] } | null>(null);
+  useEffect(() => {
+    let stop = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/marketing/clients', { cache: 'no-store' });
+        if (res.status === 400) { if (timer) clearInterval(timer); return; } // no backend
+        if (!res.ok) return;
+        const body = await res.json();
+        if (!stop && Array.isArray(body.data)) setRemote({ clients: body.data as RemoteClient[], products: (body.products ?? []) as string[] });
+      } catch { /* try again next tick */ }
+    };
+    load();
+    timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 10000);
+    return () => { stop = true; if (timer) clearInterval(timer); };
+  }, []);
+
   // Audiences, one contact per phone number
   const audiences = useMemo(() => {
+    if (remote) {
+      const everyone: Contact[] = remote.clients.map(c => ({
+        name: c.name, phone: c.phone, product: c.product ?? '', place: c.place ?? '', detail: c.detail, when: c.when ?? '',
+        kind: c.tags.includes('order') ? 'customer' : 'lead', tags: c.tags, email: c.email,
+      }));
+      const buyers = everyone.filter(c => c.tags.includes('order'));
+      return { everyone, buyers, repeat: [], lapsed: [], 'open-leads': [], 'lost-leads': [] } as Record<AudienceKey, Contact[]>;
+    }
     const byPhone = new Map<string, { name: string; count: number; last: string; product: string; city: string }>();
     orders.filter(o => o.status !== 'cancelled').forEach(o => {
       const c = byPhone.get(o.phone);
@@ -44,12 +86,12 @@ export default function TeamMarketing({ data, orders, campaigns, onCampaignsChan
       const seen = new Set<string>();
       return data.leads.filter(test).filter(l => !seen.has(l.phone) && seen.add(l.phone)).map(l => ({
         name: l.customer_name, phone: l.phone, product: verticalName(l.vertical_id), place: l.source,
-        detail: `${stageName(l.stage_id)} · ${callerName(l.assigned_to)}`, when: l.updated_at, kind: 'lead' as const,
+        detail: `${stageName(l.stage_id)} · ${callerName(l.assigned_to)}`, when: l.updated_at, kind: 'lead' as const, tags: ['lead'] as ClientTag[],
       }));
     };
     const toContact = (b: typeof buyers[number]): Contact => ({
       name: b.name, phone: b.phone, product: b.product, place: b.city,
-      detail: `${b.count} order${b.count === 1 ? '' : 's'}`, when: b.last, kind: 'customer',
+      detail: `${b.count} order${b.count === 1 ? '' : 's'}`, when: b.last, kind: 'customer', tags: ['order'] as ClientTag[],
     });
     const customers = buyers.map(toContact);
     const buyerPhones = new Set(customers.map(c => c.phone));
@@ -62,13 +104,15 @@ export default function TeamMarketing({ data, orders, campaigns, onCampaignsChan
       'open-leads': leadList(isOpenLead),
       'lost-leads': leadList(l => stageOf(l.stage_id)?.name === 'Lost'),
     } as Record<AudienceKey, Contact[]>;
-  }, [orders, data.leads]);
+  }, [remote, orders, data.leads]);
 
   const reachable = audiences.everyone.length;
-  const products = useMemo(() => Array.from(new Set(orders.flatMap(o => o.items.map(i => i.product_name)))).sort(), [orders]);
+  // What a campaign can be about: the live catalogue from the backend, or (offline) whatever the sample orders contain.
+  const products = useMemo(() => remote ? remote.products : Array.from(new Set(orders.flatMap(o => o.items.map(i => i.product_name)))).sort(), [remote, orders]);
 
   // Composer
-  const [audience, setAudience] = useState<AudienceKey>('everyone');
+  // Every campaign goes to everyone with a phone number (the audience picker was removed from the form).
+  const [audience] = useState<AudienceKey>('everyone');
   const [templateKey, setTemplateKey] = useState(TEMPLATES[0].key);
   const [product, setProduct] = useState(products[0] ?? '');
   const [message, setMessage] = useState(TEMPLATES[0].text);
@@ -78,11 +122,11 @@ export default function TeamMarketing({ data, orders, campaigns, onCampaignsChan
   const [contactQuery, setContactQuery] = useState('');
   const [contactPage, setContactPage] = useState(0);
   const cq = contactQuery.trim().toLowerCase();
-  const [kind, setKind] = useState<'all' | 'customer' | 'lead'>('all');
+  const [kind, setKind] = useState<'all' | ClientTag>('all');
   const shownContacts = audiences.everyone
-    .filter(c => kind === 'all' || c.kind === kind)
+    .filter(c => kind === 'all' || c.tags.includes(kind))
     .filter(c => !cq || [c.name, c.phone].some(v => v.toLowerCase().includes(cq)))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => b.when.localeCompare(a.when) || a.name.localeCompare(b.name)); // newest first: a client who just arrived is on page one
   const contactPages = Math.max(1, Math.ceil(shownContacts.length / CONTACT_PAGE));
   const safeContactPage = Math.min(contactPage, contactPages - 1);
   const previewName = contacts[0]?.name ?? 'Ramesh Nayak';
@@ -158,20 +202,9 @@ export default function TeamMarketing({ data, orders, campaigns, onCampaignsChan
       {/* Composer + preview */}
       <div className="mk-compose">
         <div className="panel mk-form">
-          <div className="panel-head"><h2>New WhatsApp campaign</h2><span className="panel-meta">3 steps</span></div>
+          <div className="panel-head"><h2>New WhatsApp campaign</h2><span className="panel-meta">2 steps</span></div>
 
-          <div className="mk-step"><span className="mk-step-n">1</span> Who should get it?</div>
-          <div className="mk-audiences">
-            {AUDIENCES.map(a => (
-              <button key={a.key} className={`mk-audience ${audience === a.key ? 'on' : ''}`} onClick={() => setAudience(a.key)}>
-                <span className="mk-audience-n">{audiences[a.key].length}</span>
-                <span className="mk-audience-label">{a.label}</span>
-                <span className="mk-audience-hint">{a.hint}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="mk-step"><span className="mk-step-n">2</span> What should it say?</div>
+          <div className="mk-step"><span className="mk-step-n">1</span> What should it say?</div>
           <div className="lf-pills mk-templates">
             {TEMPLATES.map(t => (
               <button key={t.key} className={`lf-pill ${templateKey === t.key ? 'on' : ''}`} onClick={() => pickTemplate(t.key)}>{t.label}</button>
@@ -194,7 +227,7 @@ export default function TeamMarketing({ data, orders, campaigns, onCampaignsChan
             <textarea rows={4} value={message} onChange={e => setMessage(e.target.value)} />
           </label>
 
-          <div className="mk-step mk-step-last"><span className="mk-step-n">3</span> Send</div>
+          <div className="mk-step mk-step-last"><span className="mk-step-n">2</span> Send</div>
           <div className="mk-send-row">
             <button className="btn-primary" onClick={createCampaign}><Send size={15} /> Prepare {contacts.length} messages</button>
             <span className="loc">You then send each one on WhatsApp with one tap, or download the list for a WhatsApp Business broadcast.</span>
@@ -285,14 +318,17 @@ export default function TeamMarketing({ data, orders, campaigns, onCampaignsChan
         </div>
       )}
 
-      {/* Every client: customers and connected farmers */}
+      {/* Every client: whoever ordered, enquired or complained on the website, plus imported leads (one row per phone number) */}
       <div className="panel">
         <div className="panel-head mk-contacts-head">
           <h2>All clients</h2>
           <div className="mk-contacts-tools">
             <div className="lf-pills">
-              {([['all', `All · ${audiences.everyone.length}`], ['customer', `Customers · ${audiences.buyers.length}`], ['lead', `Farmers · ${audiences.everyone.length - audiences.buyers.length}`]] as const).map(([k, label]) => (
-                <button key={k} className={`lf-pill ${kind === k ? 'on' : ''}`} onClick={() => { setKind(k); setContactPage(0); }}>{label}</button>
+              <button className={`lf-pill ${kind === 'all' ? 'on' : ''}`} onClick={() => { setKind('all'); setContactPage(0); }}>All · {audiences.everyone.length}</button>
+              {(['order', 'enquiry', 'complaint', 'lead'] as ClientTag[]).map(k => (
+                <button key={k} className={`lf-pill ${kind === k ? 'on' : ''}`} onClick={() => { setKind(k); setContactPage(0); }}>
+                  {TAG_PILL[k]} · {audiences.everyone.filter(c => c.tags.includes(k)).length}
+                </button>
               ))}
             </div>
             <div className="search mk-contacts-search">
@@ -304,15 +340,19 @@ export default function TeamMarketing({ data, orders, campaigns, onCampaignsChan
         <div className="table-wrap">
           <table className="orders-table">
             <thead>
-              <tr><th>Name</th><th>Phone</th><th>Type</th><th className="num-col">Send</th></tr>
+              <tr><th>Name</th><th>Phone</th><th>Came from</th><th>Latest</th><th className="num-col">Send</th></tr>
             </thead>
             <tbody>
-              {shownContacts.length === 0 && <tr><td colSpan={4} className="loc" style={{ textAlign: 'center', padding: 24 }}>Nobody{cq ? ' matches that search' : ' here yet'}.</td></tr>}
+              {shownContacts.length === 0 && <tr><td colSpan={5} className="loc" style={{ textAlign: 'center', padding: 24 }}>Nobody{cq ? ' matches that search' : ' here yet'}.</td></tr>}
               {shownContacts.slice(safeContactPage * CONTACT_PAGE, (safeContactPage + 1) * CONTACT_PAGE).map(c => (
                 <tr key={c.phone}>
-                  <td className="cust">{c.name}</td>
+                  <td className="cust">{c.name}{(c.place || c.email) && <div className="loc">{[c.place, c.email].filter(Boolean).join(' · ')}</div>}</td>
                   <td>{c.phone}</td>
-                  <td><span className={`chip ${c.kind === 'customer' ? 'delivered' : 'confirmed'}`}>{c.kind === 'customer' ? 'Customer' : 'Farmer'}</span></td>
+                  <td>
+                    {c.tags.map(t => <span key={t} className={`chip ${TAG_CHIP[t]}`} style={{ marginRight: 4 }}>{TAG_LABEL[t]}</span>)}
+                    {c.tags.length > 1 && <div className="loc">{c.detail}</div>}
+                  </td>
+                  <td>{c.when ? shortDate(c.when) : '—'}{c.product && <div className="loc">{c.product}</div>}</td>
                   <td className="num-col">
                     <a className="ord-wa" href={whatsappTo(c.phone, fillTemplate(message, c.name, product))} target="_blank" rel="noreferrer" title="Send the campaign message to just this person">
                       <MessageCircle size={14} /> WhatsApp

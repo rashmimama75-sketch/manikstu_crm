@@ -2715,3 +2715,10 @@ tr.row-new td:first-child { box-shadow: inset 3px 0 0 var(--leaf); }
 /* Seller Orders: a summary card that is also a filter */
 button.score-btn.active { background: rgba(74, 140, 63, 0.10); box-shadow: inset 0 -3px 0 var(--green, #4a8c3f); }
 button.score-btn .num svg { vertical-align: -2px; margin-right: 4px; opacity: 0.7; }
+
+/* A full-width bar list: a compact name column (instead of 46% of a very wide panel), so the bars grow with the screen */
+.hbar-list.wide { grid-template-columns: minmax(130px, 280px) 1fr auto; }
+.hbar-list.wide .hbar-row { grid-template-columns: minmax(130px, 280px) 1fr auto; }
+@supports (grid-template-columns: subgrid) {
+  .hbar-list.wide .hbar-row { grid-template-columns: subgrid; }
+}

@@ -1,15 +1,32 @@
-import React, { useState } from 'react';
-import { TELECALLERS, TODAY, VERTICALS } from '../../data/managerDashboard';
-import { MONTH, daysBefore, rupees, rupeesShort, shortDate } from '../../lib/format';
+import React, { useEffect, useState } from 'react';
+import { TELECALLERS, TODAY, VERTICALS, type TrackerSale } from '../../data/managerDashboard';
+import { registerSaleProducts } from '../../lib/liveMode';
+import { MONTH, rupees, rupeesShort, shortDate } from '../../lib/format';
 import { ExportFormat, exportTable } from '../../lib/export';
 import HBarList from '../HBarList';
 import ExportMenu from '../ExportMenu';
 import { EmptyRow } from './shared';
-import { TeamData, callerName, productName, productOf, salesByMonth, verticalName } from './tcData';
+import { TeamData, callerName, productName, productOf, salesByMonth } from './tcData';
 
-type Range = '7d' | 'month' | '6m';
-const RANGE_LABEL: Record<Range, string> = { '7d': 'Last 7 days', month: 'This month', '6m': 'Last 6 months' };
+type Range = 'today' | 'week' | 'month' | 'year';
+const RANGES: Range[] = ['today', 'week', 'month', 'year'];
+const RANGE_LABEL: Record<Range, string> = { today: 'Today', week: 'This week', month: 'This month', year: 'This year' };
 const PAGE_SIZE = 20;
+
+const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** The Monday of the week TODAY falls in (weeks run Monday to Sunday). */
+const WEEK_START = (() => {
+  const d = new Date(`${TODAY}T00:00:00`);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return isoDate(d);
+})();
+const YEAR = TODAY.slice(0, 4);
+
+/** Whether a sale's date (YYYY-MM-DD) falls in the chosen period, counted up to today. */
+export const inSalesRange = (day: string, range: Range) =>
+  day <= TODAY && (range === 'today' ? day === TODAY : range === 'week' ? day >= WEEK_START : range === 'month' ? day.startsWith(MONTH) : day.startsWith(YEAR));
+
+const SALES_REFRESH_MS = 20000;
 
 export default function TeamSales({ data, onToast }: { data: TeamData; onToast: (m: string) => void }) {
   const [range, setRange] = useState<Range>('month');
@@ -17,8 +34,32 @@ export default function TeamSales({ data, onToast }: { data: TeamData; onToast: 
   const [verticalId, setVerticalId] = useState<number | 'all'>('all');
   const [page, setPage] = useState(0);
 
-  const inRange = (d: string) => (range === '7d' ? daysBefore(d) <= 6 : range === 'month' ? d.startsWith(MONTH) : daysBefore(d) <= 183);
-  const scoped = data.sales.filter(s =>
+  // With the CRM backend the sales are re-read from it, so a sale recorded while this page is open appears without a
+  // reload. Without a backend (offline demo) this stays null and the page uses the sample sales it was given.
+  const [fetched, setFetched] = useState<TrackerSale[] | null>(null);
+  useEffect(() => {
+    let stop = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/tracker/sales', { cache: 'no-store' });
+        if (res.status === 400) { if (timer) clearInterval(timer); return; } // no backend
+        if (!res.ok) return;
+        const body = await res.json();
+        if (!stop && Array.isArray(body.data)) {
+          registerSaleProducts(body.data as TrackerSale[]); // before rendering, so a just-added product reads by name
+          setFetched(body.data as TrackerSale[]);
+        }
+      } catch { /* try again next tick */ }
+    };
+    load();
+    timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, SALES_REFRESH_MS);
+    return () => { stop = true; if (timer) clearInterval(timer); };
+  }, []);
+  const allSales = fetched ?? data.sales;
+
+  const inRange = (d: string) => inSalesRange(d, range);
+  const scoped = allSales.filter(s =>
     (caller === 'all' || s.caller_id === caller) && (verticalId === 'all' || productOf(s.product_id)?.vertical_id === verticalId));
   const rows = scoped.filter(s => inRange(s.sold_at)).sort((a, b) => b.sold_at.localeCompare(a.sold_at) || b.id - a.id);
   const revenue = rows.reduce((a, s) => a + s.amount, 0);
@@ -27,7 +68,6 @@ export default function TeamSales({ data, onToast }: { data: TeamData; onToast: 
     Array.from(rows.reduce((m, s) => m.set(key(s), (m.get(key(s)) ?? 0) + s.amount), new Map<K, number>())).sort((a, b) => b[1] - a[1]);
   const byCaller = group(s => s.caller_id);
   const byProduct = group(s => s.product_id).slice(0, 6);
-  const byVertical = group(s => productOf(s.product_id)?.vertical_id ?? 0);
   const months = salesByMonth(scoped);
   const maxMonth = Math.max(1, ...months.map(m => m.amount));
 
@@ -56,11 +96,7 @@ export default function TeamSales({ data, onToast }: { data: TeamData; onToast: 
   return (
     <>
       <div className="page-toolbar">
-        <div className="filters">
-          {(['7d', 'month', '6m'] as Range[]).map(r => (
-            <button key={r} className={`filter-chip ${range === r ? 'active' : ''}`} onClick={() => { setRange(r); setPage(0); }}>{RANGE_LABEL[r]}</button>
-          ))}
-        </div>
+        <div className="filters" />
         <div className="toolbar-actions">
           <select className="filter-select" value={caller} onChange={e => { setCaller(e.target.value === 'all' ? 'all' : Number(e.target.value)); setPage(0); }} aria-label="Telecaller">
             <option value="all">All telecallers</option>
@@ -102,23 +138,30 @@ export default function TeamSales({ data, onToast }: { data: TeamData; onToast: 
         </div>
       </div>
 
-      <div className="grid equal-2">
+      {/* A single full-width panel: it spans the page, so it grows and shrinks with the screen. The .grid wrapper keeps the
+          same 20px gap below it that the other rows have. */}
+      <div className="grid">
         <div className="panel">
           <div className="panel-head"><h2>By product</h2><span className="panel-meta">{RANGE_LABEL[range]}</span></div>
           {byProduct.length === 0 ? <div className="loc">No sales in this range.</div> : (
-            <HBarList rows={byProduct.map(([id, amt]) => ({ key: String(id), label: productName(id), value: amt, display: rupeesShort(amt), tip: `${productName(id)}: ${rupees(amt)}` }))} />
-          )}
-        </div>
-        <div className="panel">
-          <div className="panel-head"><h2>By vertical</h2><span className="panel-meta">{RANGE_LABEL[range]}</span></div>
-          {byVertical.length === 0 ? <div className="loc">No sales in this range.</div> : (
-            <HBarList rows={byVertical.map(([id, amt]) => ({ key: String(id), label: verticalName(id), value: amt, display: rupeesShort(amt), tip: `${verticalName(id)}: ${rupees(amt)}` }))} />
+            <HBarList wide rows={byProduct.map(([id, amt]) => ({ key: String(id), label: productName(id), value: amt, display: rupeesShort(amt), tip: `${productName(id)}: ${rupees(amt)}` }))} />
           )}
         </div>
       </div>
 
       <div className="panel">
-        <div className="panel-head"><h2>Sales</h2><span className="panel-meta">{rows.length} in {RANGE_LABEL[range].toLowerCase()}</span></div>
+        <div className="panel-head" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <h2>Sales</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginLeft: 'auto' }}>
+            <span className="panel-meta">{rows.length} {rows.length === 1 ? 'sale' : 'sales'} · {rupees(revenue)}</span>
+            {/* One period for the whole page: the figures, the charts and this table all follow it */}
+            <div className="filters" role="group" aria-label="Sales period">
+              {RANGES.map(r => (
+                <button key={r} className={`filter-chip ${range === r ? 'active' : ''}`} onClick={() => { setRange(r); setPage(0); }}>{RANGE_LABEL[r]}</button>
+              ))}
+            </div>
+          </div>
+        </div>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Date</th><th>Telecaller</th><th>Customer</th><th>Product</th><th className="num-col">Amount</th></tr></thead>

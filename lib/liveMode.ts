@@ -1,4 +1,4 @@
-import { SALES_ORDERS, WEB_ENQUIRIES } from '../data/managerDashboard';
+import { SALES_ORDERS, TRACKER_PRODUCTS, TRACKER_SALES, WEB_ENQUIRIES, type TrackerSale } from '../data/managerDashboard';
 import { INITIAL_COMPLAINTS } from '../data/complaints';
 import { SAMPLE_CAMPAIGNS } from '../data/marketing';
 import { INITIAL_CUSTOMERS, INITIAL_FPOS, INITIAL_FRANCHISES, INITIAL_TRANSACTIONS } from '../data/initialData';
@@ -13,9 +13,31 @@ import { INITIAL_STOCK } from '../data/centralInventory';
  */
 export function emptySampleData(): void {
   for (const list of [
-    SALES_ORDERS, WEB_ENQUIRIES, INITIAL_COMPLAINTS, SAMPLE_CAMPAIGNS,
+    SALES_ORDERS, TRACKER_SALES, WEB_ENQUIRIES, INITIAL_COMPLAINTS, SAMPLE_CAMPAIGNS,
     INITIAL_CUSTOMERS, INITIAL_FRANCHISES, INITIAL_FPOS, INITIAL_TRANSACTIONS, INITIAL_STOCK,
   ] as unknown[][]) {
     list.length = 0;
+  }
+}
+
+/**
+ * Put the backend's real telecalling sales where the dashboards read them (TRACKER_SALES, replaced in place so every
+ * page that imported it sees them). Called after emptySampleData, so a failed load shows no sales rather than made-up ones.
+ */
+export function applySales(list: TrackerSale[]): void {
+  TRACKER_SALES.splice(0, TRACKER_SALES.length, ...list);
+  registerSaleProducts(list);
+}
+
+/**
+ * Teach the shared product lookup (TRACKER_PRODUCTS, behind productName / productOf on every sales page) about any product
+ * that arrives with a sale but is not in it: one added after the dashboards were built, such as a website product the
+ * sales tracker has just met for the first time. Without this its sales would read "—" with no product line.
+ */
+export function registerSaleProducts(sales: TrackerSale[]): void {
+  for (const s of sales) {
+    if (s.product_name && !TRACKER_PRODUCTS.some(p => p.id === s.product_id)) {
+      TRACKER_PRODUCTS.push({ id: s.product_id, vertical_id: s.vertical_id ?? 1, name: s.product_name, price: s.quantity > 0 ? Math.round(s.amount / s.quantity) : 0 });
+    }
   }
 }

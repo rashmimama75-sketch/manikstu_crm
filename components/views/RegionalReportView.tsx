@@ -29,7 +29,9 @@ export default function RegionalReportView({ orders, onToast }: Props) {
   const stateCounts = located.reduce((m, x) => m.set(x.state, (m.get(x.state) ?? 0) + 1), new Map<string, number>());
   const unknownCount = stateCounts.get('Unknown') ?? 0;
 
-  const [state, setState] = useState('Odisha');
+  // 'all' lists every farmer who ordered, from any state; pick a state (then a district) to narrow it down
+  const [state, setState] = useState('all');
+  const stateLabel = state === 'all' ? 'All states' : state;
   const [district, setDistrict] = useState('all');
   const [period, setPeriod] = useState<Period>('all');
   const [source, setSource] = useState<OrderSource | 'all'>('all');
@@ -38,7 +40,7 @@ export default function RegionalReportView({ orders, onToast }: Props) {
 
   // Everything except the location filters
   const base = located.filter(({ o, state: st }) =>
-    st === state && inPeriod(o.created_at, period) && (source === 'all' || o.source === source));
+    (state === 'all' || st === state) && inPeriod(o.created_at, period) && (source === 'all' || o.source === source));
   const districtCounts = Array.from(base.reduce((m, x) => m.set(x.district, (m.get(x.district) ?? 0) + 1), new Map<string, number>()))
     .sort((a, b) => a[0].localeCompare(b[0]));
   const rows = base
@@ -85,14 +87,14 @@ export default function RegionalReportView({ orders, onToast }: Props) {
           productTotals.slice(5).reduce((a, [, amt]) => a + amt, 0)),
       ];
 
-  const areaLabel = `${state} › ${district === 'all' ? 'all districts' : district}`;
+  const areaLabel = `${stateLabel} › ${district === 'all' ? 'all districts' : district}`;
   const summary = `${rows.length} orders · revenue ${rupees(revenue)} · ${farmers} farmers · ${pct(delivered, live.length)}% delivered · cash to collect ${rupees(cashDue)}`;
 
   const exportFarmers = async (format: ExportFormat) => {
     if (farmerRows.length === 0) { onToast('No farmers in this area to export'); return; }
     try {
       await exportTable(format, {
-        filename: `regional-farmers-${(district === 'all' ? state : district).toLowerCase()}-${TODAY}`,
+        filename: `regional-farmers-${(district === 'all' ? stateLabel : district).toLowerCase().replace(/ /g, '-')}-${TODAY}`,
         title: `Farmers · ${areaLabel}`,
         subtitle: `${PERIOD_LABEL[period]} · ${summary} · exported ${shortDate(TODAY)}`,
         columns: [
@@ -118,6 +120,7 @@ export default function RegionalReportView({ orders, onToast }: Props) {
           <MapPin size={16} className="region-pin" aria-hidden />
           <div className="pill-select">
             <select value={state} onChange={e => { setState(e.target.value); setDistrict('all'); reset(); }} aria-label="State">
+              <option value="all">All states ({orders.length})</option>
               <optgroup label="States">
                 {INDIA_STATES.map(s => <option key={s} value={s}>{s}{stateCounts.get(s) ? ` (${stateCounts.get(s)})` : ''}</option>)}
               </optgroup>
@@ -176,8 +179,8 @@ export default function RegionalReportView({ orders, onToast }: Props) {
 
       <div className="grid equal-2">
         <div className="panel">
-          <div className="panel-head"><h2>Revenue by district</h2><span className="panel-meta">{state} · click a bar to filter</span></div>
-          {byDistrict.length === 0 ? <div className="loc">No orders from {state}{period === 'all' ? '' : ` in ${PERIOD_LABEL[period].toLowerCase()}`}.</div> : (
+          <div className="panel-head"><h2>Revenue by district</h2><span className="panel-meta">{stateLabel} · click a bar to filter</span></div>
+          {byDistrict.length === 0 ? <div className="loc">No orders from {state === 'all' ? 'any state' : state}{period === 'all' ? '' : ` in ${PERIOD_LABEL[period].toLowerCase()}`}.</div> : (
             <div className="col-chart">
               {byDistrict.map(([d, amt], i) => (
                 <button
@@ -199,9 +202,9 @@ export default function RegionalReportView({ orders, onToast }: Props) {
           )}
         </div>
         <div className="panel">
-          <div className="panel-head"><h2>Product share</h2><span className="panel-meta">{district === 'all' ? state : district}</span></div>
+          <div className="panel-head"><h2>Product share</h2><span className="panel-meta">{district === 'all' ? stateLabel : district}</span></div>
           {byProduct.length === 0 ? <div className="loc">No sales in this area.</div> : (
-            <PieChart slices={byProduct} label={`Share of sales by product in ${district === 'all' ? state : district}`} />
+            <PieChart slices={byProduct} label={`Share of sales by product in ${district === 'all' ? stateLabel : district}`} />
           )}
         </div>
       </div>
@@ -224,7 +227,7 @@ export default function RegionalReportView({ orders, onToast }: Props) {
               <tr><th>Farmer / customer</th><th>Village · town · PIN</th><th className="num-col">Orders</th><th className="num-col">Total spent</th><th>Last order</th><th>Top product</th></tr>
             </thead>
             <tbody>
-              {farmerRows.length === 0 && <tr><td colSpan={6} className="loc" style={{ textAlign: 'center', padding: 24 }}>{stateCounts.get(state) ? 'No farmers in this area for these filters.' : `No orders from ${state} yet.`}</td></tr>}
+              {farmerRows.length === 0 && <tr><td colSpan={6} className="loc" style={{ textAlign: 'center', padding: 24 }}>{(state === 'all' ? orders.length : stateCounts.get(state)) ? 'No farmers in this area for these filters.' : `No orders from ${stateLabel} yet.`}</td></tr>}
               {pageRows.map(f => (
                 <tr key={f.phone}>
                   <td className="cust">{f.name}<div className="loc">{f.phone}</div></td>

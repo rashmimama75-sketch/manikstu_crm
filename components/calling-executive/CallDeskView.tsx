@@ -5,6 +5,19 @@ import { dayStart, pct, shortDateTime } from '../../lib/format';
 import { fmtDuration, stageName, time12, verticalName } from '../telecaller/tcData';
 import { QUEUE_CHIP, QueueItem } from './queue';
 
+/** The order details typed in while the customer is still on the phone (text fields, checked before saving). */
+export interface OrderForm {
+  productId: number | '';
+  quantity: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  paymentMethod: 'COD' | 'UPI';
+}
+
+export const emptyOrderForm = (): OrderForm => ({ productId: '', quantity: '1', address: '', city: '', state: 'Odisha', pincode: '', paymentMethod: 'COD' });
+
 export interface CallForm {
   note: string;
   stageId: number;
@@ -13,6 +26,8 @@ export interface CallForm {
   nextNote: string;
   /** What the customer said: part of the call report, required when the customer was reached. */
   customerResponse: CustomerResponse | '';
+  /** Filled in when the customer response is "Placed order". */
+  order: OrderForm;
 }
 
 interface Props {

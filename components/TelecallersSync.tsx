@@ -1,7 +1,7 @@
 'use client';
 
-import type { Telecaller } from '../data/managerDashboard';
-import { emptySampleData } from '../lib/liveMode';
+import type { Telecaller, TrackerSale } from '../data/managerDashboard';
+import { applySales, emptySampleData } from '../lib/liveMode';
 import { applyTelecallers } from '../lib/telecallers';
 
 /**
@@ -9,8 +9,11 @@ import { applyTelecallers } from '../lib/telecallers';
  * the backend) clears the built-in sample data, before the dashboard next to it renders (siblings render in order),
  * so names, ids and lists line up on the first paint. It draws nothing.
  */
-export default function TelecallersSync({ list, live = false }: { list: Telecaller[]; live?: boolean }) {
-  if (live) emptySampleData();
+export default function TelecallersSync({ list, sales, live = false }: { list: Telecaller[]; sales?: TrackerSale[]; live?: boolean }) {
+  if (live) {
+    emptySampleData();
+    applySales(sales ?? []); // the backend's real sales, not the sample ones
+  }
   applyTelecallers(list);
   return null;
 }

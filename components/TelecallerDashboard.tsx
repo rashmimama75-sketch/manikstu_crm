@@ -133,6 +133,26 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     return () => { stop = true; clearInterval(id); };
   }, []);
   const trackOrders = liveOrders ?? SALES_ORDERS;
+
+  // The Regional report counts every farmer who ordered, from every platform (website, telecalling…), including orders
+  // the seller has not confirmed yet, so it has its own feed (the list above only starts at confirmation). Read while the
+  // report is open and re-read every 20 seconds; offline it keeps the sample orders.
+  const [regionalOrders, setRegionalOrders] = useState<SalesOrder[] | null>(null);
+  useEffect(() => {
+    if (activePage !== 'regional') return;
+    let stop = false;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/reports/regional-orders', { cache: 'no-store' });
+        if (!res.ok) return;
+        const body = await res.json();
+        if (!stop && Array.isArray(body.data)) setRegionalOrders(body.data as SalesOrder[]);
+      } catch { /* try again next tick */ }
+    };
+    load();
+    const id = setInterval(() => { if (!document.hidden) load(); }, 20000);
+    return () => { stop = true; clearInterval(id); };
+  }, [activePage]);
   const lateOrders = useMemo(() => trackOrders.filter(o => trackingFor(o).delayed).length, [trackOrders]);
   const toAssign = complaints.filter(isUnassigned).length;
   const workflow = useMemo(() => workflowSummary(sync.data), [sync.data]);
@@ -318,7 +338,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
           )}
           {activePage === 'regional' && (
             <RegionalReportView
-              orders={SALES_ORDERS}
+              orders={regionalOrders ?? SALES_ORDERS}
               onToast={showToast}
             />
           )}
