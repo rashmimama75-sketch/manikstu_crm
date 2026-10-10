@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Phone, PhoneOff } from 'lucide-react';
-import { CUSTOMER_RESPONSES, CallOutcome, CustomerResponse, Followup, LeadActivity, Telecaller, TrackerLead } from '../../data/managerDashboard';
+import { CUSTOMER_RESPONSES, CallOutcome, CustomerResponse, Followup, LeadActivity, Telecaller, TrackerLead, WebEnquiry } from '../../data/managerDashboard';
 import { ago, shortDateTime } from '../../lib/format';
 import Modal from '../Modal';
 import { StatusChip } from '../telecaller/shared';
@@ -18,6 +18,8 @@ interface Props {
   target: CallTarget;
   me: Telecaller;
   history: LeadActivity[];
+  /** The website enquiry this lead came from, so the customer's own words are in front of the caller. */
+  enquiry?: WebEnquiry;
   initialForm: CallForm;
   onSave: (outcome: CallOutcome, form: CallForm, durationSec: number | null) => void;
   onClose: () => void;
@@ -36,7 +38,7 @@ export function dial(phone: string) {
  * Calling window for the Call desk page: the call starts as soon as it opens
  * (dialer + timer), and the outcome is logged here without leaving the page.
  */
-export default function CallModal({ target, me, history, initialForm, onSave, onClose }: Props) {
+export default function CallModal({ target, me, history, enquiry, initialForm, onSave, onClose }: Props) {
   const { lead, followup } = target;
   const script = scriptFor(lead.vertical_id);
   const [form, setForm] = useState<CallForm>(initialForm);
@@ -88,6 +90,12 @@ export default function CallModal({ target, me, history, initialForm, onSave, on
           {verticalName(lead.vertical_id)} · {stageName(lead.stage_id)} · Source: {lead.source} · Added {ago(lead.created_at)}
         </div>
         {followup && <div className="ce-reason">Callback reason: {followup.note}</div>}
+        {enquiry && (
+          <div className="ce-reason" style={{ marginTop: 8 }}>
+            <strong>Website enquiry ({enquiry.type}):</strong> “{enquiry.message}”
+            {enquiry.email ? <div className="loc">{enquiry.email}</div> : null}
+          </div>
+        )}
       </div>
 
       <div className={`ce-callbar ${live ? 'live' : ''}`}>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { BarChart3, CalendarClock, ClipboardCheck, History, LayoutDashboard, ListChecks, PackageCheck } from 'lucide-react';
+import { BarChart3, CalendarClock, ClipboardCheck, History, Inbox, LayoutDashboard, ListChecks, MessageSquareWarning, PackageCheck } from 'lucide-react';
 import Sidebar, { NavGroup } from './Sidebar';
 import Topbar from './Topbar';
 import FooterFrieze from './FooterFrieze';
@@ -13,6 +13,10 @@ import CeFollowupsView from './calling-executive/CeFollowupsView';
 import CeReportsView from './calling-executive/CeReportsView';
 import OrderFollowUp from './orders/OrderFollowUp';
 import MyReports from './workflow/MyReports';
+import ExecEnquiries from './calling-executive/ExecEnquiries';
+import ExecComplaints from './calling-executive/ExecComplaints';
+import { useComplaints } from '../lib/useComplaints';
+import { enquiriesOf } from '../lib/trackerOps';
 import { reportStatusOf } from '../lib/leadWorkflow';
 import CallModal, { CallTarget, dial } from './calling-executive/CallModal';
 import { TODAY, TRACKER_SALES, CallOutcome, CustomerResponse } from '../data/managerDashboard';
@@ -70,6 +74,13 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  // Customer support. Enquiries: only the ones the head handed to this executive (the server sends no others), each
+  // one also a lead on the Call desk. Complaints: only the tickets assigned to them, read from and saved to the backend.
+  const myEnquiries = useMemo(() => enquiriesOf(sync.data).filter(e => e.lead_id !== null && myLeads.some(l => l.id === e.lead_id)), [sync.data, myLeads]);
+  const enquiriesToCall = myEnquiries.filter(e => e.status !== 'replied' && !myActivities.some(a => a.lead_id === e.lead_id && a.outcome === 'Connected')).length;
+  const [complaints, setComplaints, complaintsSync] = useComplaints([], msg => showToast(`⚠️ ${msg}`));
+  const myOpenComplaints = complaints.filter(c => c.assigned_to === me.id && c.status !== 'resolved' && c.status !== 'closed').length;
 
   /** Records a call (activity, lead stage, follow-ups) on the server. */
   const logCall = async (
@@ -143,6 +154,8 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
     callbacks: { title: 'Call Desk',    sub: 'Your assigned leads, calls made, pending calls and callbacks in one place.' },
     followups: { title: 'Follow-ups',   sub: 'Every callback you owe — overdue, due today and upcoming.' },
     reports:   { title: 'Reports',      sub: 'Your calling performance, and reports you can download as Excel or PDF.' },
+    enquiries: { title: 'Website Enquiries', sub: 'Enquiries the telecalling head has handed to you: call the customer with their message in front of you.' },
+    complaints: { title: 'Complaints', sub: 'Customer complaints assigned to you: call, add notes, resolve them or hand them back to the head.' },
     'my-reports': { title: 'My Call Reports', sub: 'The report you submit with every call, and whether the telecalling head has verified it or sent it back.' },
     'order-calls': { title: 'Order Calls', sub: 'Orders the seller has confirmed: call the customer, log how it went and book follow-ups.' },
   };
@@ -158,6 +171,13 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
         { key: 'history', label: 'Call history', icon: History },
         { key: 'my-reports', label: 'My call reports', icon: ClipboardCheck, count: myActivities.filter(a => reportStatusOf(a) === 'returned').length },
         { key: 'order-calls', label: 'Order calls', icon: PackageCheck },
+      ],
+    },
+    {
+      label: 'Customer support',
+      items: [
+        { key: 'enquiries', label: 'Enquiries', icon: Inbox, count: enquiriesToCall },
+        { key: 'complaints', label: 'Complaints', icon: MessageSquareWarning, count: myOpenComplaints },
       ],
     },
     { label: 'Performance', items: [{ key: 'reports', label: 'Reports', icon: BarChart3 }] },
@@ -180,7 +200,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           <Topbar
             title={currentMeta.title}
             subtitle={currentMeta.sub}
-            search={activePage === 'history' || activePage === 'callbacks' || activePage === 'followups' || activePage === 'order-calls' || activePage === 'my-reports'
+            search={activePage === 'history' || activePage === 'callbacks' || activePage === 'followups' || activePage === 'order-calls' || activePage === 'my-reports' || activePage === 'enquiries' || activePage === 'complaints'
               ? { query: searchQuery, onChange: setSearchQuery, placeholder: 'Search by name, phone or note…' }
               : undefined}
             status={<SyncBadge syncedAt={sync.syncedAt} offline={sync.offline} />}
@@ -211,6 +231,8 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           {activePage === 'history' && <CallHistoryView activities={myActivities} leads={myLeads} searchQuery={searchQuery} />}
           {activePage === 'order-calls' && <OrderFollowUp searchQuery={searchQuery} onToast={showToast} />}
           {activePage === 'my-reports' && <MyReports leads={myLeads} activities={myActivities} searchQuery={searchQuery} onResubmit={resubmitReport} />}
+          {activePage === 'enquiries' && <ExecEnquiries enquiries={myEnquiries} leads={myLeads} activities={myActivities} searchQuery={searchQuery} meName={me.name} onCall={leadId => startCall(leadId)} />}
+          {activePage === 'complaints' && <ExecComplaints complaints={complaints} meId={me.id} meName={me.name} searchQuery={searchQuery} ready={complaintsSync.ready} onChange={setComplaints} onToast={showToast} />}
           {activePage === 'callbacks' && (
             <CallbacksView leads={myLeads} followups={myFollowups} activities={myActivities} queue={queue} assignments={sync.data.assignments} searchQuery={searchQuery} onOpen={startCall} />
           )}
@@ -237,6 +259,7 @@ export default function CallingExecutiveDashboard({ user, tracker }: { user: Ses
           target={callTarget}
           me={me}
           history={activities.filter(a => a.lead_id === callTarget.lead.id).sort((a, b) => b.created_at.localeCompare(a.created_at))}
+          enquiry={myEnquiries.find(e => e.lead_id === callTarget.lead.id)}
           initialForm={emptyForm(callTarget.lead.stage_id, callTarget.followup?.note ?? '')}
           onSave={(outcome, callForm, durationSec) => {
             logCall(callTarget, outcome, callForm, durationSec);

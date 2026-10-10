@@ -65,12 +65,14 @@ const fmtHours = (h: number) => (h < 48 ? `${Math.round(h)}h` : `${(h / 24).toFi
 interface Props {
   complaints: Complaint[];
   onComplaintsChange: React.Dispatch<React.SetStateAction<Complaint[]>>;
+  /** Saves a new ticket and resolves with it as stored (with its real id). When absent the ticket is only added on screen. */
+  createComplaint?: (complaint: Complaint) => Promise<Complaint>;
   headName: string;
   searchQuery: string;
   onToast: (message: string) => void;
 }
 
-export default function TeamComplaints({ complaints, onComplaintsChange, headName, searchQuery, onToast }: Props) {
+export default function TeamComplaints({ complaints, onComplaintsChange, createComplaint, headName, searchQuery, onToast }: Props) {
   const [tab, setTab] = useState<Tab>(() => (complaints.some(isUnassigned) ? 'To assign' : 'Open'));
   const [attention, setAttention] = useState<string | null>(null);
   const [priority, setPriority] = useState<Priority | 'all'>('all');
@@ -114,7 +116,7 @@ export default function TeamComplaints({ complaints, onComplaintsChange, headNam
     onToast(`${ids.length === 1 ? complaints.find(c => c.id === ids[0])?.ticket : `${ids.length} complaints`} assigned to ${who(to)}`);
   };
 
-  const create = (input: NewComplaintInput) => {
+  const create = async (input: NewComplaintInput) => {
     const id = Math.max(0, ...complaints.map(c => c.id)) + 1;
     const num = Math.max(0, ...complaints.map(c => Number(c.ticket.slice(4)))) + 1;
     const stamp = nowStamp();
@@ -137,12 +139,22 @@ export default function TeamComplaints({ complaints, onComplaintsChange, headNam
       returned_note: null,
       events: [{ at: stamp, by: headName, kind: 'raised', text: `Logged by ${headName} (${input.channel})` }],
     };
-    onComplaintsChange(prev => [complaint, ...prev]);
+    let saved = complaint;
+    if (createComplaint) {
+      try {
+        saved = await createComplaint(complaint); // the backend gives it its real ticket number and id
+      } catch (e) {
+        onToast(`⚠️ ${(e as Error).message}`);
+        return;
+      }
+    } else {
+      onComplaintsChange(prev => [complaint, ...prev]);
+    }
     setCreating(false);
     setTab('To assign');
     setAttention(null);
-    onToast(`${complaint.ticket} saved`);
-    if (assignNow) setAssignIds([id]);
+    onToast(`${saved.ticket} saved`);
+    if (assignNow) setAssignIds([saved.id]);
   };
 
   // ---- Numbers -----------------------------------------------------------------------------

@@ -28,7 +28,8 @@ import { reportStatusOf, workflowSummary } from '../lib/leadWorkflow';
 import TeamInventory from './telecaller/TeamInventory';
 import { trackingFor } from './telecaller/orderTracking';
 import type { SalesOrder } from '../data/managerDashboard';
-import { Complaint, INITIAL_COMPLAINTS } from '../data/complaints';
+import { INITIAL_COMPLAINTS } from '../data/complaints';
+import { useComplaints } from '../lib/useComplaints';
 import { isUnassigned } from './telecaller/complaintsUtil';
 import {
   SALES_ORDERS,
@@ -65,7 +66,6 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
   const { leads, followups, activities } = sync.data;
   // Website enquiries: the same list as the manager's Enquiries page (shared through the server)
   const [enquiries, setEnquiries] = useSharedEnquiries(sync, msg => showToast(`⚠️ ${msg}`));
-  const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
   const data: TeamData = useMemo(
     () => ({ leads, followups, activities, sales: TRACKER_SALES }),
     [leads, followups, activities],
@@ -91,6 +91,9 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  // Complaints come from the CRM backend (the head sees every ticket); changes made here are saved there.
+  const [complaints, setComplaints, complaintsSync] = useComplaints(INITIAL_COMPLAINTS, msg => showToast(`⚠️ ${msg}`));
 
   const pageMeta: Record<string, { title: string; sub: string }> = {
     overview:   { title: 'Telecalling Team',     sub: `Good day, ${firstName}. Here's how the whole telecalling team is doing.` },
@@ -367,7 +370,7 @@ export default function TelecallerDashboard({ user, tracker }: { user: SessionUs
             <TeamReports data={data} complaints={complaints} enquiries={enquiries} headName={user.name} onToast={showToast} />
           )}
           {activePage === 'complaints' && (
-            <TeamComplaints complaints={complaints} onComplaintsChange={setComplaints} headName={user.name} searchQuery={searchQuery} onToast={showToast} />
+            <TeamComplaints complaints={complaints} onComplaintsChange={setComplaints} createComplaint={complaintsSync.create} headName={user.name} searchQuery={searchQuery} onToast={showToast} />
           )}
           <footer className="site-footer">
             <div>© 2026 Manikstu Agri Network · Telecalling</div>
